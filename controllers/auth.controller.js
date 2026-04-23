@@ -1,0 +1,161 @@
+const crypto = require('crypto');
+const asyncHandler = require('express-async-handler');
+const bcrypt = require('bcryptjs');
+const User = require('../models/user.model');
+const AppError = require('../utils/AppError');
+const { signToken } = require('../utils/signToken');
+const sendEmail = require('../utils/sendEmail');
+
+const hashResetToken = (token) =>
+    crypto.createHash('sha256').update(token).digest('hex');
+
+/**
+ * @desc    Register a new customer account
+ * @route   POST /api/auth/register
+ * @access  Public
+ */
+exports.register = asyncHandler(async (req, res) => {
+    const { fullName, email, password, confirmPassword, phone } = req.body;
+
+    // 2. التحقق من تطابق كلمتي المرور
+    if (password !== confirmPassword) {
+        throw new AppError('كلمات المرور غير متطابقة', 400);
+    }
+
+    const exists = await User.findOne({ email: email.toLowerCase().trim() });
+    if (exists) {
+        throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
+    }
+
+    const user = await User.create({
+        fullName,
+        email,
+        password,
+        phone,
+        role: 'زبون', 
+        cart: [],      
+        favorites: []  
+    });
+
+    const token = signToken(user);
+    const safeUser = await User.findById(user._id).select('-password');
+
+    res.status(201).json({
+        token,
+        user: safeUser
+    });
+});
+
+
+/**
+ * @desc    Login — returns JWT
+ * @route   POST /api/auth/login
+ * @access  Public
+ */
+exports.login = asyncHandler(async (req, res) => {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
+        '+password'
+    );
+    if (!user) {
+        throw new AppError('بيانات الدخول غير صحيحة', 401);
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+        throw new AppError('بيانات الدخول غير صحيحة', 401);
+    }
+
+    const token = signToken(user);
+    const safeUser = await User.findById(user._id).select('-password');
+
+    res.json({
+        token,
+        user: safeUser
+    });
+});
+
+/**
+ * @desc    Request password reset (stores hashed token, does not reveal if email exists)
+ * @route   POST /api/auth/forgot-password
+ * @access  Public
+ */
+exports.forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+        return res.json({ message: 'إذا كان البريد مسجلاً لدينا، ستصلك تعليمات إعادة تعيين كلمة المرور قريباً.' });
+    }
+
+    // 1. إنشاء الرمز وحفظه مشفراً في الداتا بيز
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.passwordResetToken = hashResetToken(resetToken);
+    user.passwordResetExpire = new Date(Date.now() + 60 * 60 * 1000);
+    await user.save({ validateBeforeSave: false });
+
+    // 2. تجهيز الرابط الذي سيتم إرساله للمستخدم
+    const resetURL = `http://localhost:3000/api/auth/reset-password/${resetToken}`;
+    
+    const message = `لقد طلبت إعادة تعيين كلمة المرور الخاصة بك.\n\nالرجاء الضغط على الرابط التالي لإعداد كلمة مرور جديدة:\n${resetURL}\n\nإذا لم تقم بهذا الطلب، يرجى تجاهل هذا الإيميل.`;
+
+    try {
+        // 3. إرسال الإيميل
+        await sendEmail({
+            email: user.email,
+            subject: 'إعادة تعيين كلمة المرور - متجر العصائر والحلويات',
+            message: message
+        });
+
+        res.json({ message: 'إذا كان البريد مسجلاً لدينا، ستصلك تعليمات إعادة تعيين كلمة المرور قريباً.' });
+
+    } catch (err) {
+        // إذا فشل إرسال الإيميل، يجب أن نمسح الرمز من الداتا بيز كإجراء أمني
+        user.passwordResetToken = undefined;
+        user.passwordResetExpire = undefined;
+        await user.save({ validateBeforeSave: false });
+
+        throw new AppError('حدث خطأ أثناء إرسال البريد الإلكتروني. الرجاء المحاولة لاحقاً', 500);
+    }
+});
+
+/**
+ * @desc    Reset password using token from email (or dev console)
+ * @route   POST /api/auth/reset-password
+ * @access  Public
+ */
+exports.resetPassword = asyncHandler(async (req, res) => {
+    const { token } = req.params; 
+    const { password, confirmPassword } = req.body;
+
+    if (password !== confirmPassword) {
+        throw new AppError('كلمات المرور غير متطابقة', 400);
+    }
+    const hashed = hashResetToken(token);
+    const user = await User.findOne({
+        passwordResetToken: hashed,
+        passwordResetExpire: { $gt: Date.now() }
+    }).select('+password +passwordResetToken +passwordResetExpire');
+    if (!user) {
+        throw new AppError('الرمز غير صالح أو منتهي', 400);
+    }
+    user.password = password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpire = undefined;
+
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await user.save();
+
+    res.json({ message: 'تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.' });
+});
+
+/**
+ * @desc    Logout — invalidates JWTs by bumping tokenVersion
+ * @route   POST /api/auth/logout
+ * @access  Private
+ */
+exports.logout = asyncHandler(async (req, res) => {
+    await User.findByIdAndUpdate(req.user.id, { $inc: { tokenVersion: 1 } });
+    res.json({ message: 'تم تسجيل الخروج بنجاح' });
+});

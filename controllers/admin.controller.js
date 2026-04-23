@@ -1,0 +1,177 @@
+const asyncHandler = require('express-async-handler');
+const User = require('../models/user.model');
+const Order = require('../models/order.model');
+const AppError = require('../utils/AppError');
+const { getPaginationFromQuery } = require('../utils/pagination');
+
+/**
+ * @route   GET /api/admin/stats
+ * @access  Private / أدمن
+ */
+exports.getDashboardStats = asyncHandler(async (req, res) => {
+    const deliveredMatch = { status: 'تم التوصيل' };
+
+    const [salesAgg, ordersCount, usersCount, growth] = await Promise.all([
+        Order.aggregate([
+            { $match: deliveredMatch },
+            { $group: { _id: null, totalSales: { $sum: '$totalPrice' } } }
+        ]),
+        Order.countDocuments(),
+        User.countDocuments(),
+        User.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+                }
+            },
+            { $count: 'newUsersLast30Days' }
+        ])
+    ]);
+
+    const totalSales = salesAgg[0]?.totalSales ?? 0;
+    const newUsersLast30Days = growth[0]?.newUsersLast30Days ?? 0;
+
+    res.json({
+        success: true,
+        data: {
+            totalSales,
+            totalOrders: ordersCount,
+            totalUsers: usersCount,
+            newUsersLast30Days
+        }
+    });
+});
+
+/**
+ * @route   GET /api/admin/users
+ * @access  Private / أدمن
+ */
+exports.listUsers = asyncHandler(async (req, res) => {
+    const { page, limit, skip } = getPaginationFromQuery(req.query);
+    const filter = {};
+    if (req.query.role) {
+        filter.role = req.query.role;
+    }
+    const search = (req.query.search || '').trim();
+    if (search) {
+        filter.$or = [
+            { fullName: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+            { phone: { $regex: search, $options: 'i' } }
+        ];
+    }
+
+    const [items, total] = await Promise.all([
+        User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).select('-password'),
+        User.countDocuments(filter)
+    ]);
+
+    res.json({
+        success: true,
+        data: items,
+        meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
+    });
+});
+
+/**
+ * @route   GET /api/admin/users/:id
+ * @access  Private / أدمن
+ */
+exports.getUserById = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) {
+        throw new AppError('المستخدم غير موجود', 404);
+    }
+    res.json({ success: true, data: user });
+});
+
+/**
+ * @route   POST /api/admin/users
+ * @access  Private / أدمن
+ */
+exports.createUser = asyncHandler(async (req, res) => {
+    const { fullName, email, password, phone, role } = req.body;
+
+    const exists = await User.findOne({ email: email.toLowerCase().trim() });
+    if (exists) {
+        throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
+    }
+
+    const user = await User.create({
+        fullName,
+        email: email.toLowerCase().trim(),
+        password,
+        phone,
+        role,
+        cart: [],
+        favorites: []
+    });
+
+    const safe = await User.findById(user._id).select('-password');
+    res.status(201).json({ success: true, data: safe });
+});
+
+/**
+ * @route   PATCH /api/admin/users/:id
+ * @access  Private / أدمن
+ */
+exports.updateUser = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.params.id).select('+password');
+    if (!user) {
+        throw new AppError('المستخدم غير موجود', 404);
+    }
+
+    const {
+        fullName,
+        email,
+        password,
+        confirmPassword,
+        role,
+        phone,
+        favorites,
+        cart
+    } = req.body;
+
+    if (password !== undefined) {
+        if (password !== confirmPassword) {
+            throw new AppError('كلمات المرور غير متطابقة', 400);
+        }
+        user.password = password;
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    }
+    if (fullName !== undefined) user.fullName = fullName;
+    if (phone !== undefined) user.phone = phone;
+    if (role !== undefined) user.role = role;
+    if (favorites !== undefined) user.favorites = favorites;
+    if (cart !== undefined) user.cart = cart;
+
+    if (email !== undefined) {
+        const nextEmail = email.toLowerCase().trim();
+        if (nextEmail !== user.email) {
+            const taken = await User.findOne({ email: nextEmail, _id: { $ne: user._id } });
+            if (taken) {
+                throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
+            }
+            user.email = nextEmail;
+        }
+    }
+
+    await user.save();
+    const safe = await User.findById(user._id).select('-password');
+    res.json({ success: true, data: safe });
+});
+
+/**
+ * @route   DELETE /api/admin/users/:id
+ * @access  Private / أدمن
+ */
+exports.deleteUser = asyncHandler(async (req, res) => {
+    if (req.params.id === req.user.id) {
+        throw new AppError('لا يمكنك حذف حسابك الحالي', 400);
+    }
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) {
+        throw new AppError('المستخدم غير موجود', 404);
+    }
+    res.json({ success: true, message: 'تم حذف المستخدم' });
+});
