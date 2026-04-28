@@ -81,6 +81,12 @@ exports.getProduct = asyncHandler(async (req, res) => {
     res.json({ success: true, data: product });
 });
 
+//get latest product
+exports.latest = asyncHandler(async (req, res) => {
+    const latestProducts = await Product.find().sort({ createdAt: -1 }) .limit(10);
+    res.json(latestProducts); 
+});
+
 /**
  * @route   GET /api/admin/products/:id
  * @access  Private / أدمن

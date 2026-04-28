@@ -1,7 +1,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const morgan = require('morgan'); // استيراد morgan في البداية
+const morgan = require('morgan'); 
 const connectDB = require("./config/db");
 const {errorHandler}=require('./middlewares/errorHandler');
 dotenv.config();
