@@ -87,6 +87,46 @@ exports.latest = asyncHandler(async (req, res) => {
     res.json(latestProducts); 
 });
 
+// @desc    جلب المنتجات الأكثر طلبًا
+// @route   GET /api/products/most-requested  (تم تعديل المسار ليكون أوضح)
+exports.getMostRequested = asyncHandler(async (req, res) => {
+    // 1. ابحث عن المنتجات التي تكون "الأكثر طلباً" و "فعالة"
+    const mostRequestedProducts = await Product.find({ 
+        isMostRequested: true, 
+        isActive: true 
+    })
+    .sort({ createdAt: -1 }) // 2. رتبها من الأحدث إلى الأقدم
+    .limit(15) // 3. حدد عدد النتائج (مثلاً 10 منتجات)
+    .populate(productPopulate); // 4. أضف بيانات التصنيف
+
+    // 5. أرسل النتائج كاستجابة
+    res.json({ success: true, data: mostRequestedProducts });
+});
+
+// @desc    جلب جميع المنتجات التي عليها عروض سارية
+// @route   GET /api/products/offers
+// @access  Public
+exports.getOfferProducts = asyncHandler(async (req, res) => {
+    // الحصول على تاريخ ووقت الآن
+    const now = new Date();
+
+    // بناء شروط البحث
+    const filter = {
+        isActive: true, // 1. يجب أن يكون المنتج فعالاً
+        offerPrice: { $exists: true, $ne: null }, // 2. يجب أن يوجد سعر للعرض
+        offerEndDate: { $exists: true, $gte: now } // 3. تاريخ انتهاء العرض يجب أن يكون أكبر من أو يساوي تاريخ اليوم
+    };
+
+    // البحث في قاعدة البيانات مع تطبيق الشروط والترتيب
+    const offerProducts = await Product.find(filter)
+        .sort({ offerEndDate: 1 }) // ترتيب المنتجات حسب تاريخ انتهاء العرض (العروض التي ستنتهي قريباً تظهر أولاً)
+        .populate(productPopulate); // جلب بيانات التصنيف
+
+    // إرسال الرد
+    res.json({ success: true, data: offerProducts });
+});
+
+
 /**
  * @route   GET /api/admin/products/:id
  * @access  Private / أدمن
