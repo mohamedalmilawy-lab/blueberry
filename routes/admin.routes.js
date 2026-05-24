@@ -8,6 +8,8 @@ const validateQuery = require('../middlewares/validateQuery');
 const adminController = require('../controllers/admin.controller');
 const categoryController = require('../controllers/category.controller');
 const productController = require('../controllers/product.controller');
+const adminNotificationController = require('../controllers/adminNotification.controller');
+const bannerController = require('../controllers/banner.controller');
 
 const { createCategorySchema, updateCategorySchema } = require('../validators/category.validator');
 const {
@@ -15,6 +17,8 @@ const {
     updateProductSchema,
     toggleFeaturedSchema
 } = require('../validators/product.validator');
+const { createBannerSchema, updateBannerSchema } = require('../validators/banner.validator');
+const { broadcastPushSchema } = require('../validators/push.validator');
 
 const { adminProductsQuery } = require('../validators/query.validator');
 const { createStaffUserSchema, listAdminUsersQuerySchema } = require('../validators/staff.validator');
@@ -26,6 +30,22 @@ const { isValidObjectId } = require('../middlewares/isValidObjectId');
 router.param('id', isValidObjectId);
 
 router.get('/stats', adminController.getDashboardStats);
+
+//الاشعارات التي تصل الى الادمن حين يتم انشاء طلب جديد
+router.get('/order-notifications', adminNotificationController.listAdminNotifications);
+router.patch(
+    '/order-notifications/:id/read',
+    adminNotificationController.markNotificationRead
+);
+
+//الاشعارات التي يرسلها الادمن الى الزبائن
+router.post('/push/broadcast', validate(broadcastPushSchema), adminController.broadcastPush);
+
+router.get('/banners', bannerController.adminListBanners);
+router.get('/banners/:id', bannerController.adminGetBanner);
+router.post('/banners', validate(createBannerSchema), bannerController.adminCreateBanner);
+router.patch('/banners/:id', validate(updateBannerSchema), bannerController.adminUpdateBanner);
+router.delete('/banners/:id', bannerController.adminDeleteBanner);
 
 router.get('/users', validateQuery(listAdminUsersQuerySchema), adminController.listUsers);
 router.get('/users/:id', adminController.getUserById);

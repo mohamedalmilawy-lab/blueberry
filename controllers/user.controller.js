@@ -33,7 +33,7 @@ exports.updateMe = asyncHandler(async (req, res) => {
         throw new AppError('المستخدم غير موجود', 404);
     }
     // الحماية: نستخرج فقط الحقول الآمنة والمسموح بتعديلها
-    const { fullName, email, phone } = req.body;
+    const { fullName, email, phone, addresses } = req.body;
 
     // التحقق من فرادة البريد الإلكتروني الجديد
     if (email && email.toLowerCase().trim() !== user.email) {
@@ -58,6 +58,9 @@ exports.updateMe = asyncHandler(async (req, res) => {
     // تحديث البيانات المسموحة فقط
     if (fullName !== undefined) user.fullName = fullName;
     if (phone !== undefined) user.phone = phone;
+    if (addresses !== undefined) {
+        user.addresses = addresses;
+    }
 
     await user.save();
     //  إرجاع المستخدم بعد التحديث

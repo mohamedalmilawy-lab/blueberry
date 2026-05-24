@@ -3,6 +3,8 @@ const User = require('../models/user.model');
 const Order = require('../models/order.model');
 const AppError = require('../utils/AppError');
 const { getPaginationFromQuery } = require('../utils/pagination');
+const DeviceToken = require('../models/deviceToken.model');
+const { isFcmConfigured, sendMulticastToTokens } = require('../utils/fcm');
 
 /**
  * @route   GET /api/admin/stats
@@ -174,4 +176,39 @@ exports.deleteUser = asyncHandler(async (req, res) => {
         throw new AppError('المستخدم غير موجود', 404);
     }
     res.json({ success: true, message: 'تم حذف المستخدم' });
+});
+
+/**
+ * @route   POST /api/admin/push/broadcast
+ * @access  Private / أدمن
+ */
+exports.broadcastPush = asyncHandler(async (req, res) => {
+    if (!isFcmConfigured()) {
+        throw new AppError('خدمة الإشعارات (FCM) غير مهيأة على الخادم', 503);
+    }
+
+    const { title, message } = req.body;
+    const tokens = await DeviceToken.distinct('token');
+
+    if (tokens.length === 0) {
+        return res.json({
+            success: true,
+            data: { successCount: 0, failureCount: 0, totalTokens: 0 },
+            message: 'لا توجد أجهزة مسجّلة لإرسال الإشعار إليها'
+        });
+    }
+
+    const { successCount, failureCount } = await sendMulticastToTokens(tokens, {
+        title,
+        body: message
+    });
+
+    res.json({
+        success: true,
+        data: {
+            successCount,
+            failureCount,
+            totalTokens: tokens.length
+        }
+    });
 });

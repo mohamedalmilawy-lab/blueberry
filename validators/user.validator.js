@@ -3,21 +3,11 @@ const passwordComplexity = require("joi-password-complexity");
 
 const objectId = Joi.string().hex().length(24).messages({ 'string.pattern.base': 'معرف غير صالح' });
 
-const complexityOptions = {
-    min: 6,
-    max: 30,
-    lowerCase: 1,
-    upperCase: 1,
-    numeric: 0,
-    symbol: 0,
-    requirementCount: 2,
-};
-
 // مخطط التسجيل
 const registerUserSchema = Joi.object({
     fullName: Joi.string().min(2).max(50).trim().required(),
     email: Joi.string().email().trim().required(),
-    password: passwordComplexity(complexityOptions).required(),
+    password: Joi.string().min(6).max(30).required(),
     confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
         'any.only': 'كلمة المرور وتأكيد كلمة المرور يجب أن تكون متطابقة',
     }),
@@ -39,16 +29,22 @@ const loginUserSchema = Joi.object({
     password: Joi.string().required()
 });
 
+const savedAddressSchema = Joi.object({
+    label: Joi.string().min(1).max(80).trim().required(),
+    street: Joi.string().min(1).max(1000).trim().required()
+});
+
 //  مخطط تحديث المدير (يستطيع تعديل الـ Role)
 const updateUserByAdminSchema = Joi.object({
     fullName: Joi.string().min(2).max(50).trim(),
     email: Joi.string().email().trim(),
-    password: passwordComplexity(complexityOptions),
+    password: Joi.string().min(6).max(30),
     confirmPassword: Joi.string().valid(Joi.ref('password'))
         .when('password', { is: Joi.exist(), then: Joi.required() }), 
     role: Joi.string().valid('زبون', 'مشرف','أدمن', 'موظف توصيل'),
     phone: Joi.string().pattern(/^[0-9]+$/).min(8).max(15), 
     favorites: Joi.array().items(objectId),
+    addresses: Joi.array().items(savedAddressSchema).max(50),
     cart: Joi.array().items(
         Joi.object({
             product: objectId.required(),
@@ -57,16 +53,18 @@ const updateUserByAdminSchema = Joi.object({
     )
 }).min(1);
 
+
 // مخطط تحديث المستخدم لنفسه (لا يستطيع تعديل الـ Role)
 const updateUserByUserSchema = Joi.object({
     fullName: Joi.string().min(2).max(50).trim(),
     email: Joi.string().email().trim(),
     phone: Joi.string().pattern(/^[0-9]+$/).min(8).max(15), // تم التصحيح
+    addresses: Joi.array().items(savedAddressSchema).max(50)
 }).min(1);
 
 //  مخطط تغيير كلمة المرور فقط
 const updateUserPasswordSchema = Joi.object({
-    password: passwordComplexity(complexityOptions).required(),
+    password: Joi.string().min(6).max(30).required(),
     confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
         'any.only': 'كلمة المرور وتأكيد كلمة المرور يجب أن تكون متطابقة',
     }),
@@ -79,7 +77,7 @@ const forgotPasswordSchema = Joi.object({
 
 // إعادة تعيين كلمة المرور بالرمز
 const resetPasswordSchema = Joi.object({
-    password: passwordComplexity(complexityOptions).required(),
+    password: Joi.string().min(6).max(30).required(),
     confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
         'any.only': 'كلمة المرور وتأكيد كلمة المرور يجب أن تكون متطابقة',
     }),
@@ -90,7 +88,7 @@ const changePasswordSchema = Joi.object({
         'string.empty': 'كلمة المرور القديمة مطلوبة',
         'any.required': 'كلمة المرور القديمة مطلوبة',
     }),
-    newPassword: passwordComplexity(complexityOptions).required().messages({
+    newPassword: Joi.string().min(6).max(30).messages({
         'string.empty': 'كلمة المرور مطلوبة',
         'any.required': 'كلمة المرور مطلوبة',
     }),
@@ -106,6 +104,7 @@ module.exports = {
     registerUserSchema,
     loginUserSchema,
     updateUserByAdminSchema,
+    savedAddressSchema,
     updateUserByUserSchema,
     updateUserPasswordSchema,
     forgotPasswordSchema,

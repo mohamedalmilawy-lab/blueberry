@@ -1,4 +1,5 @@
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const Order = require('../models/order.model');
 const Product = require('../models/product.model');
 const User = require('../models/user.model');
@@ -13,6 +14,7 @@ const {
     updateOrderBySupervisorSchema
 } = require('../validators/order.validator');
 const { guestOrderVerifySchema } = require('../validators/staff.validator');
+const { notifyAdminNewOrder } = require('../services/adminOrderNotification.service');
 
 const orderPopulate = [
     { path: 'user', select: 'fullName email phone' },
@@ -27,32 +29,40 @@ function joiToErrors(error) {
     }));
 }
 
-function toShippingAddressShape(addr) {
-    if (!addr) return null;
-    const plain = toPlainDoc(addr);
-    const site = typeof plain.site === 'string' ? plain.site.trim() : '';
-    const details =plain.details === undefined || plain.details === null? '': String(plain.details).trim();
-    if (!site) return null;
-    return { site, details };
+function labeledAddressToShipping(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const label = typeof obj.label === 'string' ? obj.label.trim() : '';
+    const street = typeof obj.street === 'string' ? obj.street.trim() : '';
+    if (!label || !street) return null;
+    return { label, street };
 }
 
-/**
- * Resolves shipping from `req.body.address` (string or { site, details }}) or legacy `shippingAddress`.
- */
-function pickAddressFromBody(body) {
-    const { address, shippingAddress } = body;
-    if (address !== undefined && address !== null) {
-        if (typeof address === 'string') {
-            const site = address.trim();
-            if (!site) return null;
-            return { site, details: '' };
-        }
-        if (typeof address === 'object') {
-            return toShippingAddressShape(address);
-        }
+function firstSavedAddressAsShipping(user) {
+    const first = user?.addresses?.[0];
+    return labeledAddressToShipping(first);
+}
+
+/** يختار عنواناً محفوظاً من الملف عبر `_id` الفرعي لعنصر في `addresses` */
+function shippingFromSavedAddressId(user, addressId) {
+    if (!addressId || !mongoose.Types.ObjectId.isValid(String(addressId))) {
+        return null;
     }
-    if (shippingAddress && typeof shippingAddress === 'object') {
-        return toShippingAddressShape(shippingAddress);
+    const sub = user.addresses?.id?.(addressId);
+    if (!sub) return null;
+    return labeledAddressToShipping({ label: sub.label, street: sub.street });
+}
+
+/** يحلّ عنوان التوصيل من `req.body.address` (نص أو `{ label, street }`). */
+function pickAddressFromBody(body) {
+    const { address } = body;
+    if (address === undefined || address === null) return null;
+    if (typeof address === 'string') {
+        const street = address.trim();
+        if (!street) return null;
+        return labeledAddressToShipping({ label: 'عنوان التوصيل', street });
+    }
+    if (typeof address === 'object' && !Array.isArray(address)) {
+        return labeledAddressToShipping(address);
     }
     return null;
 }
@@ -129,9 +139,14 @@ function assertGuestVerification(order, body) {
  */
 exports.createOrder = asyncHandler(async (req, res) => {
     let payload = { ...req.body };
+    const rawAddressInput = req.body.address;
+    const savedAddressIdRaw =
+        req.body.addressId !== undefined && req.body.addressId !== null
+            ? String(req.body.addressId).trim()
+            : '';
 
     if (req.user) {
-        const user = await User.findById(req.user.id).select('phone address');
+        const user = await User.findById(req.user.id).select('phone addresses');
         delete payload.guestDetails;
         payload.user = req.user.id;
         if (!payload.phone && user?.phone) {
@@ -139,23 +154,46 @@ exports.createOrder = asyncHandler(async (req, res) => {
         }
 
         const fromBody = pickAddressFromBody(payload);
-        const fromProfile = toShippingAddressShape(user?.address);
-        const resolved = fromBody || fromProfile;
-        if (!resolved) {
-            throw new AppError('يرجى تقديم عنوان التوصيل.', 400);
+        let fromSaved = null;
+        if (savedAddressIdRaw) {
+            fromSaved = shippingFromSavedAddressId(user, savedAddressIdRaw);
+            if (!fromSaved) {
+                throw new AppError('معرف العنوان المحفوظ غير صالح أو غير موجود.', 400);
+            }
         }
-        
-        // إذا قام المستخدم بإرسال عنوان جديد (fromBody)
-        // سنقوم بتحديث عنوانه في قاعدة البيانات ليصبح هو "العنوان الافتراضي" للمرات القادمة
-        if (fromBody) {
-            user.address = fromBody;
-            // اختياري: إذا أرسل رقم هاتف جديد، يمكن تحديثه في البروفايل أيضاً
-            if (payload.phone) user.phone = payload.phone; 
-            
-            await user.save(); // حفظ التعديلات في جدول الـ User
+        const fromProfile = firstSavedAddressAsShipping(user);
+        const resolved = fromBody || fromSaved || fromProfile;
+        if (!resolved) {
+            throw new AppError(
+                'يرجى تقديم عنوان التوصيل، أو اختيار عنوان محفوظ (addressId)، أو إضافة عناوين من إعدادات الحساب.',
+                400
+            );
         }
 
-        payload.shippingAddress = resolved;
+        // عنوان جديد في الطلب: إن وُجد { label, street } نحدّث قائمة العناوين المحفوظة (بدون حقل address القديم)
+        if (fromBody) {
+            if (rawAddressInput && typeof rawAddressInput === 'object' && !Array.isArray(rawAddressInput)) {
+                const label =
+                    typeof rawAddressInput.label === 'string' ? rawAddressInput.label.trim() : '';
+                const street =
+                    typeof rawAddressInput.street === 'string' ? rawAddressInput.street.trim() : '';
+                if (label && street) {
+                    if (!user.addresses) user.addresses = [];
+                    const idx = user.addresses.findIndex((a) => a.label === label);
+                    const entry = { label, street };
+                    if (idx >= 0) user.addresses[idx] = entry;
+                    else user.addresses.push(entry);
+                }
+            }
+            if (payload.phone) user.phone = payload.phone;
+
+            await user.save();
+        } else if (payload.phone && String(payload.phone) !== String(user.phone)) {
+            user.phone = payload.phone;
+            await user.save();
+        }
+
+        payload.addresses = [resolved];
     } else {
         delete payload.user;
 
@@ -165,18 +203,21 @@ exports.createOrder = asyncHandler(async (req, res) => {
         }
         let guestResolved = null;
         if (typeof rawGuestAddress === 'string') {
-            const site = rawGuestAddress.trim();
-            if (site) guestResolved = { site, details: '' };
+            const street = rawGuestAddress.trim();
+            if (street) {
+                guestResolved = labeledAddressToShipping({ label: 'عنوان التوصيل', street });
+            }
         } else if (typeof rawGuestAddress === 'object') {
-            guestResolved = toShippingAddressShape(rawGuestAddress);
+            guestResolved = labeledAddressToShipping(rawGuestAddress);
         }
         if (!guestResolved) {
             throw new AppError('يرجى تزويدنا بعنوان التوصيل.', 400);
         }
-        payload.shippingAddress = guestResolved;
+        payload.addresses = [guestResolved];
     }
 
     delete payload.address;
+    delete payload.addressId;
 
     const { error, value } = createOrderSchema.validate(payload, {
         abortEarly: false,
@@ -193,6 +234,12 @@ exports.createOrder = asyncHandler(async (req, res) => {
         items,
         totalPrice
     });
+
+    try {
+        await notifyAdminNewOrder(order);
+    } catch (err) {
+        console.error('notifyAdminNewOrder failed', err);
+    }
 
     const populated = await Order.findById(order._id).populate(orderPopulate);
     res.status(201).json({ success: true, data: populated });
@@ -251,8 +298,8 @@ exports.updateOrder = asyncHandler(async (req, res) => {
         }
         if (value.user !== undefined) order.user = value.user;
         if (value.guestDetails !== undefined) order.guestDetails = value.guestDetails;
-        if (value.shippingAddress) {
-            order.shippingAddress = { ...toPlainDoc(order.shippingAddress), ...value.shippingAddress };
+        if (value.addresses) {
+            order.addresses = value.addresses;
         }
         if (value.phone !== undefined) order.phone = value.phone;
         if (value.status !== undefined) order.status = value.status;
@@ -343,8 +390,8 @@ exports.updateOrder = asyncHandler(async (req, res) => {
                 order.items = items;
                 order.totalPrice = totalPrice;
             }
-            if (value.shippingAddress) {
-                order.shippingAddress = { ...toPlainDoc(order.shippingAddress), ...value.shippingAddress };
+            if (value.addresses) {
+                order.addresses = value.addresses;
             }
             if (value.phone) order.phone = value.phone;
             if (value.note !== undefined) order.note = value.note;
@@ -361,8 +408,8 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             if (error) {
                 return res.status(400).json({ errors: joiToErrors(error) });
             }
-            if (value.shippingAddress) {
-                order.shippingAddress = { ...toPlainDoc(order.shippingAddress), ...value.shippingAddress };
+            if (value.addresses) {
+                order.addresses = value.addresses;
             }
             if (value.phone) order.phone = value.phone;
             if (value.note !== undefined) order.note = value.note;

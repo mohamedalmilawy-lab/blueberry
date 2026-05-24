@@ -4,6 +4,8 @@ const cors = require('cors');
 const morgan = require('morgan'); 
 const connectDB = require("./config/db");
 const {errorHandler}=require('./middlewares/errorHandler');
+const http = require('http');
+const { initSocket } = require('./config/socket');
 dotenv.config();
 
 const app = express();
@@ -29,8 +31,10 @@ app.use('/api', apiRoutes);
 app.use(errorHandler);
 
 const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+initSocket(server);
 
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`Server is running in ${process.env.NODE_ENV || 'development'} mode`);
     console.log(`Server is running on http://localhost:${port}`);
 });

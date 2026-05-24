@@ -26,17 +26,17 @@ const orderItemSchema = Joi.object({
     quantity: Joi.number().min(1),
     priceAtOrder: Joi.number().min(0)
 });
-
+const savedAddressSchema = Joi.object({
+    label: Joi.string().min(1).max(80).trim().required(),
+    street: Joi.string().min(1).max(1000).trim().required()
+});
 // ======================================================
 // 1. مخطط إنشاء الطلب (Create Order Schema)
 // ======================================================
 const createOrderSchema = Joi.object({
     user: objectId,
     guestDetails: Joi.object({ fullName: Joi.string().required() }),
-    shippingAddress: Joi.object({
-        site: Joi.string().required(),
-        details: Joi.string().allow('', null).optional()
-    }).required(),
+    addresses: Joi.array().items(savedAddressSchema).max(50).required(),
     items: Joi.array()
         .items(orderItemSchema)
         .min(1)
@@ -59,10 +59,7 @@ const createOrderSchema = Joi.object({
 // ===================================================================
 const updateOrderByUserPlacedSchema = Joi.object({
     items: Joi.array().items(orderItemSchema).min(1).messages({ 'array.min': 'يجب أن يحتوي الطلب على منتج واحد على الأقل' }),
-    shippingAddress: Joi.object({
-        site: Joi.string(),
-        details: Joi.string().allow('', null)
-    }),
+    addresses: Joi.array().items(savedAddressSchema).max(50),
     phone: phoneSchema,
     note: Joi.string().allow('', null)
 }).min(1).messages({ 'object.min': 'يجب توفير معلومة واحدة على الأقل لتحديثها.' });
@@ -71,10 +68,7 @@ const updateOrderByUserPlacedSchema = Joi.object({
 // 2b. تحديث من المستخدم/الضيف عندما تكون الحالة: قيد التحضير أو تم التحضير
 // ===================================================================
 const updateOrderByUserPreparingSchema = Joi.object({
-    shippingAddress: Joi.object({
-        site: Joi.string(),
-        details: Joi.string().allow('', null)
-    }),
+    addresses: Joi.array().items(savedAddressSchema).max(50),
     phone: phoneSchema,
     note: Joi.string().allow('', null)
 })
@@ -87,10 +81,7 @@ const updateOrderByUserPreparingSchema = Joi.object({
 const updateOrderByAdminSchema = Joi.object({
     user: objectId,
     guestDetails: Joi.object({ fullName: Joi.string().min(3) }),
-    shippingAddress: Joi.object({
-        site: Joi.string(),
-        details: Joi.string().allow('', null)
-    }),
+    addresses: Joi.array().items(savedAddressSchema).max(50),
     phone: phoneSchema,
     status: Joi.string().valid(...ORDER_STATUSES),
     payment: Joi.object({

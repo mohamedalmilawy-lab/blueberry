@@ -27,10 +27,10 @@ const orderSchema = new Schema({
         // For guest checkouts (no User document)
         fullName: { type: String, trim: true }
     },
-    shippingAddress: {
-        site: { type: String, required: true },
-        details: String // e.g., building, floor, apartment number
-    },
+    addresses: [{
+        label: { type: String, required: true, trim: true },
+        street: { type: String, required: true, trim: true }
+    }],
     items: [orderItemSchema],
     totalPrice: {
         type: Number,

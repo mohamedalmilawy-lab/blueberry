@@ -31,9 +31,15 @@ const userSchema = new Schema({
         minlength: 8,
         maxlength: 15
     },
-    address: {
-        site: { type: String, trim: true },
-        details: { type: String, trim: true }
+    /** عدة عناوين محفوظة: التسمية (مثل المنزل، العمل) + نص العنوان الكامل */
+    addresses: {
+        type: [
+            {
+                label: { type: String, required: true, trim: true },
+                street: { type: String, required: true, trim: true }
+            }
+        ],
+        default: []
     },
     favorites: [{
         type: Schema.Types.ObjectId,
