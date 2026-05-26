@@ -97,42 +97,32 @@ exports.deleteDiscountCode = asyncHandler(async (req, res) => {
 exports.applyDiscountCode = asyncHandler(async (req, res) => {
     const { code } = req.body;
 
-    // ── Step 1: Look up the code ─────────────────────────────
-    // Normalise to uppercase to match stored codes
+    // 1. البحث عن الكود
     const discount = await Discount.findOne({ code: code.toUpperCase() });
 
     if (!discount) {
         throw new AppError('كود الخصم غير موجود', 404);
-        // "Code not found"
     }
 
     if (!discount.isActive) {
         throw new AppError('كود الخصم غير فعال', 400);
-        // "Code is not active"
     }
 
-    // ── Step 2: Ownership check ──────────────────────────────
-    // CRUCIAL SECURITY CHECK – make sure the authenticated user is
-    // the one the discount was assigned to.  req.user.id is set by
-    // the auth middleware as a string, so we compare via toString().
+    // 2. فحص الملكية للزبون المشخص له الكود
     if (discount.assignedUser.toString() !== req.user.id) {
         throw new AppError('هذا الكود لا ينتمي إليك', 403);
-        // "This code does not belong to you"
     }
 
-    // ── Step 3: Usage-limit check ────────────────────────────
+    // 3. فحص هل تجاوز حد الاستخدام
     if (discount.currentUsageCount >= discount.maxUsageLimit) {
         throw new AppError('تم تجاوز حد الاستخدام لهذا الكود', 400);
-        // "Usage limit exceeded"
     }
 
-    // ── All checks passed — increment usage atomically ───────
-    discount.currentUsageCount += 1;
-    await discount.save();
+    // ✨ تم إزالة أسطر زيادة العداد من هنا لأن الفحص مجرد معاينة قبل الشراء ✨
 
     res.json({
         success: true,
-        message: 'تم تطبيق كود الخصم بنجاح',
+        message: 'كود الخصم صالح وجاهز للتطبيق',
         data: {
             code: discount.code,
             discountPercentage: discount.discountPercentage,

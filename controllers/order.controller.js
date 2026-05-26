@@ -71,26 +71,26 @@ function pickAddressFromBody(body) {
 async function normalizeOrderItems(itemsInput) {
     let total = 0;
     const normalized = [];
-    
+
     // جلب جميع المنتجات دفعة واحدة
     const productIds = itemsInput.map(item => item.product);
     const products = await Product.find({ _id: { $in: productIds } });
-    
+
     // إنشاء Map لسهولة الوصول
     const productsMap = new Map(products.map(p => [p._id.toString(), p]));
 
     for (const line of itemsInput) {
         const product = productsMap.get(line.product.toString());
-        
+
         if (!product || !product.isActive) {
             throw new AppError('أحد المنتجات غير متوفر أو غير مفعّل', 400);
         }
-        
+
         const unit = getEffectiveUnitPrice(product);
         if (Math.abs(unit - line.priceAtOrder) > 1) {
             throw new AppError('أسعار المنتجات غير متطابقة مع المتجر. يرجى تحديث السلة والمحاولة مجدداً.', 400);
         }
-        
+
         total += unit * line.quantity;
         normalized.push({
             product: product._id,
@@ -238,7 +238,7 @@ exports.createOrder = asyncHandler(async (req, res) => {
     if (error) {
         return res.status(400).json({ errors: joiToErrors(error) });
     }
-    
+
     const { items, totalPrice } = await normalizeOrderItems(value.items);
 
     // ─── معالجة كود الخصم إن وُجد ───
@@ -461,11 +461,23 @@ exports.updateOrder = asyncHandler(async (req, res) => {
                 const { items, totalPrice } = await normalizeOrderItems(value.items);
                 order.items = items;
                 order.totalPrice = totalPrice;
-                
-                // إعادة حساب السعر النهائي للزبون أيضاً
-                if (order.discountPercentage) {
-                    const calculatedFinal = totalPrice * (1 - (order.discountPercentage / 100));
-                    order.finalPrice = Math.round(calculatedFinal * 100) / 100;
+
+                // 🛡️ الأمان المالي عند تعديل المنتجات:
+                if (order.discountCode) {
+                    // بما أن الخصم من الأدمن "على كيفه" وليس بناءً على قيمة الطلب، 
+                    // فنحن نكتفي فقط بالتأكد من أن الأدمن لم يقم بـ "إيقاف" الكوبون (isActive) في هذه الأثناء.
+                    const currentDiscount = await Discount.findById(order.discountCode);
+
+                    if (!currentDiscount || !currentDiscount.isActive) {
+                        // لو الأدمن ألغى تفعيل الكوبون تماماً، يتم إلغاء الخصم من الطلب المعدل
+                        order.discountPercentage = 0; 
+                        order.finalPrice = totalPrice;
+                    } else {
+                        // إذا كان الكوبون ما زال فعالاً، نطبق نفس النسبة المئوية على المجموع الجديد
+                        order.discountPercentage = currentDiscount.discountPercentage;
+                        const calculatedFinal = totalPrice * (1 - (order.discountPercentage / 100));
+                        order.finalPrice = Math.round(calculatedFinal * 100) / 100; // تقريب الفلس
+                    }
                 } else {
                     order.finalPrice = totalPrice;
                 }
