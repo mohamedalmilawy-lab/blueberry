@@ -24,14 +24,16 @@ exports.register = asyncHandler(async (req, res) => {
 
     // 2. إذا تم تقديم بريد إلكتروني، تحقق من عدم وجوده مسبقاً
     if (email) {
-        const exists = await User.findOne({ email: email.toLowerCase().trim() });
+        const trimmedEmail = email.toLowerCase().trim();
+        const exists = await User.findOne({ email: trimmedEmail });
         if (exists) {
             throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
         }
     }
 
     // 3. التحقق من عدم تكرار رقم الهاتف
-    const phoneExists = await User.findOne({ phone });
+    const trimmedPhone = phone.trim();
+    const phoneExists = await User.findOne({ phone: trimmedPhone });
     if (phoneExists) {
         throw new AppError('رقم الهاتف مستخدم بالفعل', 400);
     }
@@ -39,14 +41,14 @@ exports.register = asyncHandler(async (req, res) => {
     const userData = {
         fullName,
         password,
-        phone,
+        phone: trimmedPhone,
         role: 'زبون',
         cart: [],
         favorites: []
     };
     // إضافة البريد فقط إذا تم تقديمه
     if (email) {
-        userData.email = email;
+        userData.email = email.toLowerCase().trim();
     }
 
     const user = await User.create(userData);
@@ -74,11 +76,11 @@ exports.login = asyncHandler(async (req, res) => {
     }
 
     // البحث بالبريد الإلكتروني أو رقم الهاتف باستخدام $or
-    const trimmed = identifier.trim().toLowerCase();
+    const trimmedIdentifier = identifier.trim();
     const user = await User.findOne({
         $or: [
-            { email: trimmed },
-            { phone: identifier.trim() }
+            { email: trimmedIdentifier.toLowerCase() },
+            { phone: trimmedIdentifier }
         ]
     }).select('+password');
 
@@ -121,7 +123,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
 
     // 2. تجهيز الرابط الذي سيتم إرساله للمستخدم
     const resetURL = `http://localhost:3000/api/auth/reset-password/${resetToken}`;
-    
+
     const message = `لقد طلبت إعادة تعيين كلمة المرور الخاصة بك.\n\nالرجاء الضغط على الرابط التالي لإعداد كلمة مرور جديدة:\n${resetURL}\n\nإذا لم تقم بهذا الطلب، يرجى تجاهل هذا الإيميل.`;
 
     try {
@@ -150,7 +152,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
  * @access  Public
  */
 exports.resetPassword = asyncHandler(async (req, res) => {
-    const { token } = req.params; 
+    const { token } = req.params;
     const { password, confirmPassword } = req.body;
 
     if (password !== confirmPassword) {
