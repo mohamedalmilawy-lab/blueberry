@@ -17,25 +17,39 @@ const hashResetToken = (token) =>
 exports.register = asyncHandler(async (req, res) => {
     const { fullName, email, password, confirmPassword, phone } = req.body;
 
-    // 2. التحقق من تطابق كلمتي المرور
+    // 1. التحقق من تطابق كلمتي المرور
     if (password !== confirmPassword) {
         throw new AppError('كلمات المرور غير متطابقة', 400);
     }
 
-    const exists = await User.findOne({ email: email.toLowerCase().trim() });
-    if (exists) {
-        throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
+    // 2. إذا تم تقديم بريد إلكتروني، تحقق من عدم وجوده مسبقاً
+    if (email) {
+        const exists = await User.findOne({ email: email.toLowerCase().trim() });
+        if (exists) {
+            throw new AppError('البريد الإلكتروني مستخدم بالفعل', 400);
+        }
     }
 
-    const user = await User.create({
+    // 3. التحقق من عدم تكرار رقم الهاتف
+    const phoneExists = await User.findOne({ phone });
+    if (phoneExists) {
+        throw new AppError('رقم الهاتف مستخدم بالفعل', 400);
+    }
+
+    const userData = {
         fullName,
-        email,
         password,
         phone,
-        role: 'زبون', 
-        cart: [],      
-        favorites: []  
-    });
+        role: 'زبون',
+        cart: [],
+        favorites: []
+    };
+    // إضافة البريد فقط إذا تم تقديمه
+    if (email) {
+        userData.email = email;
+    }
+
+    const user = await User.create(userData);
 
     const token = signToken(user);
     const safeUser = await User.findById(user._id).select('-password');
@@ -53,11 +67,21 @@ exports.register = asyncHandler(async (req, res) => {
  * @access  Public
  */
 exports.login = asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
+    const { identifier, password } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
-        '+password'
-    );
+    if (!identifier || !password) {
+        throw new AppError('يرجى إدخال بيانات الدخول', 400);
+    }
+
+    // البحث بالبريد الإلكتروني أو رقم الهاتف باستخدام $or
+    const trimmed = identifier.trim().toLowerCase();
+    const user = await User.findOne({
+        $or: [
+            { email: trimmed },
+            { phone: identifier.trim() }
+        ]
+    }).select('+password');
+
     if (!user) {
         throw new AppError('بيانات الدخول غير صحيحة', 401);
     }

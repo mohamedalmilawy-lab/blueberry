@@ -8,4 +8,4 @@ require('./user.model');
 require('./adminNotification.model');
 require('./banner.model');
 require('./deviceToken.model');
-
+require('./discount.model');

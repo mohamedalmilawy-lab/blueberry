@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Order = require('../models/order.model');
 const Product = require('../models/product.model');
 const User = require('../models/user.model');
+const Discount = require('../models/discount.model');
 const AppError = require('../utils/AppError');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
 const {
@@ -70,15 +71,26 @@ function pickAddressFromBody(body) {
 async function normalizeOrderItems(itemsInput) {
     let total = 0;
     const normalized = [];
+    
+    // جلب جميع المنتجات دفعة واحدة
+    const productIds = itemsInput.map(item => item.product);
+    const products = await Product.find({ _id: { $in: productIds } });
+    
+    // إنشاء Map لسهولة الوصول
+    const productsMap = new Map(products.map(p => [p._id.toString(), p]));
+
     for (const line of itemsInput) {
-        const product = await Product.findById(line.product);
+        const product = productsMap.get(line.product.toString());
+        
         if (!product || !product.isActive) {
             throw new AppError('أحد المنتجات غير متوفر أو غير مفعّل', 400);
         }
+        
         const unit = getEffectiveUnitPrice(product);
         if (Math.abs(unit - line.priceAtOrder) > 1) {
             throw new AppError('أسعار المنتجات غير متطابقة مع المتجر. يرجى تحديث السلة والمحاولة مجدداً.', 400);
         }
+        
         total += unit * line.quantity;
         normalized.push({
             product: product._id,
@@ -226,14 +238,66 @@ exports.createOrder = asyncHandler(async (req, res) => {
     if (error) {
         return res.status(400).json({ errors: joiToErrors(error) });
     }
-
+    
     const { items, totalPrice } = await normalizeOrderItems(value.items);
+
+    // ─── معالجة كود الخصم إن وُجد ───
+    let discountCodeId = null;
+    let discountPct = 0;
+    let finalPrice = totalPrice;
+    let discountDoc = null; // أضفنا هذا المتغير للاحتفاظ ببيانات الخصم لتحديثه لاحقاً
+
+    if (value.discountCode) {
+        // 1. البحث عن الكود
+        discountDoc = await Discount.findOne({ code: value.discountCode.toUpperCase() });
+        if (!discountDoc) {
+            throw new AppError('كود الخصم غير موجود', 404);
+        }
+
+        // 2. هل الكود فعّال؟
+        if (!discountDoc.isActive) {
+            throw new AppError('كود الخصم غير فعال', 400);
+        }
+
+        // 3. هل الكود مخصص لهذا المستخدم؟ (يجب أن يكون مسجّل دخول)
+        if (!req.user) {
+            throw new AppError('يجب تسجيل الدخول لاستخدام كود الخصم', 401);
+        }
+        if (discountDoc.assignedUser.toString() !== req.user.id) {
+            throw new AppError('هذا الكود لا ينتمي إليك', 403);
+        }
+
+        // 4. هل تم تجاوز حد الاستخدام؟
+        if (discountDoc.currentUsageCount >= discountDoc.maxUsageLimit) {
+            throw new AppError('تم تجاوز حد الاستخدام لهذا الكود', 400);
+        }
+
+        // 5. حساب السعر النهائي بعد الخصم
+        discountPct = discountDoc.discountPercentage;
+        finalPrice = totalPrice * (1 - (discountPct / 100));
+        finalPrice = Math.round(finalPrice * 100) / 100; // تقريب لأقرب فلس
+        discountCodeId = discountDoc._id;
+    }
+
+    // حذف discountCode من payload لأنه ليس حقلاً نصياً في الـ Schema
+    delete value.discountCode;
 
     const order = await Order.create({
         ...value,
         items,
-        totalPrice
+        totalPrice,
+        discountCode: discountCodeId,
+        discountPercentage: discountPct,
+        finalPrice
     });
+
+    // ✅ زيادة عداد الاستخدام بعد التأكد من نجاح إنشاء الطلب
+    if (discountDoc) {
+        await Discount.updateOne(
+            { _id: discountDoc._id },
+            { $inc: { currentUsageCount: 1 } }
+        );
+    }
 
     try {
         await notifyAdminNewOrder(order);
@@ -312,8 +376,16 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             const { items, totalPrice } = await normalizeOrderItems(value.items);
             order.items = items;
             order.totalPrice = totalPrice;
-        } else if (value.totalPrice !== undefined) {
-            order.discount = order.totalPrice - value.totalPrice;
+            // يجب إعادة حساب السعر النهائي إذا كان هناك خصم مطبق مسبقاً
+            if (order.discountPercentage) {
+                const calculatedFinal = totalPrice * (1 - (order.discountPercentage / 100));
+                order.finalPrice = Math.round(calculatedFinal * 100) / 100;
+            } else {
+                order.finalPrice = totalPrice;
+            }
+        }
+        else if (value.totalPrice !== undefined) {
+            order.finalPrice = value.totalPrice;
             order.totalPrice = value.totalPrice;
         }
         await order.save();
@@ -389,6 +461,14 @@ exports.updateOrder = asyncHandler(async (req, res) => {
                 const { items, totalPrice } = await normalizeOrderItems(value.items);
                 order.items = items;
                 order.totalPrice = totalPrice;
+                
+                // إعادة حساب السعر النهائي للزبون أيضاً
+                if (order.discountPercentage) {
+                    const calculatedFinal = totalPrice * (1 - (order.discountPercentage / 100));
+                    order.finalPrice = Math.round(calculatedFinal * 100) / 100;
+                } else {
+                    order.finalPrice = totalPrice;
+                }
             }
             if (value.addresses) {
                 order.addresses = value.addresses;

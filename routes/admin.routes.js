@@ -10,6 +10,7 @@ const categoryController = require('../controllers/category.controller');
 const productController = require('../controllers/product.controller');
 const adminNotificationController = require('../controllers/adminNotification.controller');
 const bannerController = require('../controllers/banner.controller');
+const discountController = require('../controllers/discount.controller');
 
 const { createCategorySchema, updateCategorySchema } = require('../validators/category.validator');
 const {
@@ -18,6 +19,7 @@ const {
     toggleFeaturedSchema
 } = require('../validators/product.validator');
 const { createBannerSchema, updateBannerSchema } = require('../validators/banner.validator');
+const { createDiscountSchema } = require('../validators/discount.validator');
 const { broadcastPushSchema } = require('../validators/push.validator');
 
 const { adminProductsQuery } = require('../validators/query.validator');
@@ -65,5 +67,10 @@ router.post('/products', validate(createProductSchema), productController.adminC
 router.patch('/products/:id', validate(updateProductSchema), productController.adminUpdateProduct);
 router.patch('/products/:id/featured', validate(toggleFeaturedSchema), productController.adminToggleFeatured);
 router.delete('/products/:id', productController.adminDeleteProduct);
+
+router.get('/discounts', discountController.listDiscountCodes);
+router.get('/discounts/:id', discountController.getDiscountCode);
+router.post('/discounts', validate(createDiscountSchema), discountController.createDiscountCode);
+router.delete('/discounts/:id', discountController.deleteDiscountCode);
 
 module.exports = router;

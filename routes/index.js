@@ -13,5 +13,6 @@ router.use("/chat", require("./chat.routes"));
 router.use('/contact', require('./contact.routes'));
 router.use('/banners', require('./banners.routes'));
 router.use('/devices', require('./devices.routes'));
+router.use('/discounts', require('./discount.routes'));
 
 module.exports = router;

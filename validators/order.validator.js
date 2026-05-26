@@ -44,9 +44,10 @@ const createOrderSchema = Joi.object({
         .messages({ 'array.min': 'يجب أن يحتوي الطلب على منتج واحد على الأقل' }),
     status: Joi.string().valid(...ORDER_STATUSES).default('تم الطلب'),
     payment: Joi.object({
-        method: Joi.string().valid('شام كاش', 'الدفع عند التسليم').required(),
+        method: Joi.string().valid('الدفع عند التسليم').required(),
         status: Joi.string().valid('لم تدفع بعد', 'تم الدفع', 'فشل الدفع').default('لم تدفع بعد')
     }).required(),
+    discountCode: Joi.string().trim().optional(),
     driver: objectId.optional(),
     note: Joi.string().allow('', null).optional(),
     phone: phoneSchema.required()
@@ -71,9 +72,7 @@ const updateOrderByUserPreparingSchema = Joi.object({
     addresses: Joi.array().items(savedAddressSchema).max(50),
     phone: phoneSchema,
     note: Joi.string().allow('', null)
-})
-    .min(1)
-    .messages({ 'object.min': 'يجب توفير معلومة واحدة على الأقل لتحديثها.' });
+}).min(1).messages({ 'object.min': 'يجب توفير معلومة واحدة على الأقل لتحديثها.' });
 
 // ===================================================================
 // 3. مخطط تحديث الطلب (من طرف مدير النظام - صلاحيات كاملة)
@@ -85,17 +84,15 @@ const updateOrderByAdminSchema = Joi.object({
     phone: phoneSchema,
     status: Joi.string().valid(...ORDER_STATUSES),
     payment: Joi.object({
-        method: Joi.string().valid('شام كاش', 'الدفع عند التسليم'),
+        method: Joi.string().valid('الدفع عند التسليم'),
         status: Joi.string().valid('لم تدفع بعد', 'تم الدفع', 'فشل الدفع')
     }),
     driver: objectId.allow(null),
     note: Joi.string().allow('', null),
     items: Joi.array().items(orderItemSchema).min(1),
     totalPrice: Joi.number().min(0),
-    discount: Joi.number().min(0)
-})
-    .min(1)
-    .messages({ 'object.min': 'يجب توفير حقل واحد على الأقل لتحديثه.' });
+    finalPrice: Joi.number().min(0)
+}).min(1).messages({ 'object.min': 'يجب توفير حقل واحد على الأقل لتحديثه.' });
 
 // ===================================================================
 // 4. تحديث من موظف التوصيل (JSON: { status, payment?: { status } })

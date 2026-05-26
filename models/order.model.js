@@ -36,8 +36,18 @@ const orderSchema = new Schema({
         type: Number,
         required: true
     },
-    discount: {
+    // ─── حقول الخصم ───
+    discountCode: {
+        type: Schema.Types.ObjectId,
+        ref: 'Discount',
+        default: null
+    },
+    discountPercentage: {
         type: Number,
+        default: 0
+    },
+    finalPrice: {
+        type: Number
     },
     status: {
         type: String,
@@ -47,7 +57,7 @@ const orderSchema = new Schema({
     payment: {
         method: {
             type: String,
-            enum: ['شام كاش', 'الدفع عند التسليم'],
+            enum: ['الدفع عند التسليم'], // COD فقط
             required: true
         },
         status: {

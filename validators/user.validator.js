@@ -6,7 +6,7 @@ const objectId = Joi.string().hex().length(24).messages({ 'string.pattern.base':
 // مخطط التسجيل
 const registerUserSchema = Joi.object({
     fullName: Joi.string().min(2).max(50).trim().required(),
-    email: Joi.string().email().trim().required(),
+    email: Joi.string().email().trim().optional().allow('', null),
     password: Joi.string().min(6).max(30).required(),
     confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
         'any.only': 'كلمة المرور وتأكيد كلمة المرور يجب أن تكون متطابقة',
@@ -25,7 +25,10 @@ const registerUserSchema = Joi.object({
 
 //  مخطط تسجيل الدخول
 const loginUserSchema = Joi.object({
-    email: Joi.string().email().required(),
+    identifier: Joi.string().required().messages({
+        'string.empty': 'يرجى إدخال البريد الإلكتروني أو رقم الهاتف',
+        'any.required': 'يرجى إدخال البريد الإلكتروني أو رقم الهاتف',
+    }),
     password: Joi.string().required()
 });
 

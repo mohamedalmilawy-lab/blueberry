@@ -10,8 +10,9 @@ const userSchema = new Schema({
     },
     email: {
         type: String,
-        required: true,
+        required: false,
         unique: true,
+        sparse: true, // يسمح بعدة مستخدمين بدون بريد إلكتروني بدون خطأ duplicate key
         lowercase: true,
         trim: true
     },
