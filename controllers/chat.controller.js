@@ -3,7 +3,7 @@ const Category = require('../models/category.model');
 const Product = require('../models/product.model');
 
 exports.chat = asyncHandler(async (req, res) => {
-    const userMessage = req.body.message;
+    const { message: userMessage, history = [] } = req.body;
 
     if (!userMessage) {
         return res.status(400).json({ reply: "يرجى إرسال رسالة." });
@@ -11,63 +11,75 @@ exports.chat = asyncHandler(async (req, res) => {
 
     // 1. جلب البيانات من قاعدة البيانات بالتوازي لتحسين السرعة
     const [availableProducts, allCategories] = await Promise.all([
-        Product.find({ isActive: true }).populate('category').limit(100),
+        Product.find({ isActive: true }).populate('category'),
         Category.find({ isActive: true })
     ]);
 
-    // 2. بناء كتالوج المتجر بشكل منظم
-    let catalogText = "بيانات المتجر المتاحة حالياً:\n";
+    // 2. بناء بيانات المتجر بشكل منظم واحترافي
+    let catalogInfo = "قائمة المنتجات المتاحة في المتجر:\n";
 
-    // تجميع المنتجات حسب الصنف في الذاكرة لتقليل عمليات البحث (Optimization)
-    const productsGroupedByCat = availableProducts.reduce((acc, p) => {
-        const catId = p.category?._id?.toString();
-        if (catId) {
-            if (!acc[catId]) acc[catId] = [];
-            acc[catId].push(p);
-        }
+    // تجميع المنتجات حسب الصنف
+    const productsByCat = availableProducts.reduce((acc, p) => {
+        const catName = p.category?.name || "عام";
+        if (!acc[catName]) acc[catName] = [];
+        acc[catName].push(p);
         return acc;
     }, {});
 
-    catalogText += "\n--- الأصناف والمنتجات ---\n";
-    allCategories.forEach(category => {
-        const categoryProducts = productsGroupedByCat[category._id.toString()] || [];
-        const productNames = categoryProducts.length > 0 
-            ? categoryProducts.map(p => p.name).join('، ') 
-            : "لا يوجد منتجات حالياً في هذا الصنف";
+    Object.keys(productsByCat).forEach(catName => {
+        catalogInfo += `\n📌 قسم: ${catName}\n`;
+        productsByCat[catName].forEach(p => {
+            const hasOffer = p.offerPrice && p.offerPrice < p.price;
+            const priceText = hasOffer 
+                ? `${p.offerPrice}$ (عرض خاص! السعر الأصلي ${p.price}$)` 
+                : `${p.price}$`;
             
-        catalogText += `- الصنف: ${category.name} | المنتجات: [${productNames}]\n`;
+            const features = [];
+            if (p.isMostRequested) features.push("🔥 الأكثر طلباً");
+            if (hasOffer) features.push("🎁 عرض محدود");
+
+            catalogInfo += `- ${p.name}: ${priceText} ${features.length > 0 ? `[${features.join(' | ')}]` : ''}\n`;
+            if (p.details) catalogInfo += `  وصف المنتج: ${p.details}\n`;
+        });
     });
 
-    catalogText += "\n--- قائمة الأسعار التفصيلية ---\n";
-    availableProducts.forEach(product => {
-        const price = product.offerPrice && product.offerPrice < product.price 
-            ? `${product.offerPrice}$ (عرض خاص بدل ${product.price}$)` 
-            : `${product.price}$`;
-        catalogText += `- منتج "${product.name}": بسعر ${price}\n`;
-    });
-
-    // 3. سياسات المتجر
-    const policies = `
---- سياسات المتجر ---
-- الشحن والدفع: نوفر خدمة الدفع عند الاستلام (ديليفري) أو عبر خدمة "شام كاش".
-- إجراءات الطلب: لتأكيد طلبك، نحتاج منك تزويدنا بالعنوان الكامل ورقم الهاتف.
-- التوصيل: يتم التوصيل خلال ساعة عمل واحدة بعد تأكيد البيانات.
+    // 3. سياسات وتفاصيل المتجر
+    const shopPolicies = `
+🏠 معلومات المتجر والسياسات:
+- اسم المتجر: Blue Berry (بلو بيري).
+- المنتجات: حلويات، عصائر، ومنتجات فاخرة.
+- طرق الدفع: نوفر الدفع نقداً عند الاستلام (Cash on Delivery) ".
+- التوصيل: متوفر لجميع المناطق، يتم التوصيل عادةً خلال 30-60 دقيقة.
+- لطلب أوردر: نحتاج (الاسم، العنوان بالتفصيل، رقم الهاتف، وقائمة الطلبات).
+- العروض: العروض المذكورة أعلاه سارية حتى نفاد الكمية.
 `;
 
-    // 4. بناء الـ System Prompt
-    const systemPrompt = `أنت مساعد ذكي في متجر "Blue Berry".
-أجب بلباقة واحترافية بناءً على البيانات التالية فقط:
+    // 4. بناء الـ System Prompt المحسن
+    const systemPrompt = `أنت "بيري"، المساعد الذكي الودود لمتجر "Blue Berry". 
+مهمتك هي مساعدة الزبائن في اختيار أفضل المنتجات والإجابة على استفساراتهم بلباقة واحترافية.
 
-${catalogText}
-${policies}
+${shopPolicies}
 
-تعليمات صارمة:
-1. إذا سأل المستخدم عن صنف، اذكر له المنتجات المتاحة فيه فقط.
-2. إذا طلب الشراء، أخبره بوسائل الدفع (عند الاستلام أو شام كاش) واطلب منه (الاسم، العنوان، رقم الهاتف).
-3. لا تقترح أي وجبات أو أسعار غير موجودة في القائمة أعلاه.
-4. إذا سألك عن شيء غير موجود، اعتذر بلباقة وأخبره بما هو متاح لديك.`;
+${catalogInfo}
 
-    // 5. الاتصال بـ OpenRouter
+تعليمات الرد:
+1. كن ودوداً جداً واستخدم رموزاً تعبيرية (Emojis) مناسبة.
+2. إذا سأل الزبون عن منتج معين، أعطه السعر والوصف وشجعه على التجربة إذا كان "الأكثر طلباً".
+3. إذا سأل عن "عرض" أو "تخفيض"، ركز على المنتجات التي لديها "عرض خاص".
+4. عند الرغبة في الطلب، اطلب منه البيانات التالية بلباقة: (الاسم، العنوان، رقم الهاتف).
+5. إذا طلب شيئاً غير موجود، اقترح عليه أقرب بديل متاح من نفس القسم.
+6. اجعل ردودك منظمة باستخدام نقاط (Bullet points) لتسهيل القراءة.
+7. لا تذكر أي أسعار أو معلومات خارج البيانات المزودة أعلاه.
+8. رد دائماً باللغة العربية بلهجة مهذبة (مزيج بين الفصحى البسيطة والبيضاء).`;
+
+    // 5. تجهيز الرسائل (مع دعم التاريخ إن وجد)
+    const messages = [
+        { role: "system", content: systemPrompt },
+        ...history.slice(-5), // نأخذ آخر 5 رسائل فقط للحفاظ على الـ Context دون استهلاك Tokens كثير
+        { role: "user", content: userMessage }
+    ];
+
+    // 6. الاتصال بـ OpenRouter
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -77,18 +89,15 @@ ${policies}
             },
             body: JSON.stringify({
                 model: "openrouter/free",
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userMessage }
-                ],
-                temperature: 0.7 // توازن بين الإبداع والدقة
+                messages: messages,
+                temperature: 0.8
             })
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            console.error("OpenRouter Error:", errorData);
-            return res.status(502).json({ reply: "عذراً، المساعد الذكي غير متاح حالياً. حاول لاحقاً." });
+            console.error("OpenRouter API Error:", errorData);
+            return res.status(502).json({ reply: "عذراً، أنا أواجه مشكلة بسيطة في الاتصال حالياً. هل يمكنك المحاولة مرة أخرى بعد لحظات؟ 🫐" });
         }
 
         const data = await response.json();
@@ -96,11 +105,11 @@ ${policies}
         if (data.choices && data.choices.length > 0) {
             return res.json({ reply: data.choices[0].message.content });
         } else {
-            return res.status(500).json({ reply: "لم أتمكن من معالجة الرد، يرجى المحاولة مرة أخرى." });
+            return res.status(500).json({ reply: "لم أستطع صياغة الرد المناسب حالياً، جرب سؤالي بطريقة أخرى! ✨" });
         }
 
     } catch (error) {
         console.error("Chat Controller Error:", error);
-        return res.status(500).json({ reply: "حدث خطأ في الاتصال بالسيرفر." });
+        return res.status(500).json({ reply: "حدث خطأ. يرجى إعادى المحاولة" });
     }
 });

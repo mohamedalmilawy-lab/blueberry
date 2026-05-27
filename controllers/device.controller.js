@@ -1,3 +1,4 @@
+//تسجيل توكن الجهاز لارسال للمستهدم اشعارات
 const asyncHandler = require('express-async-handler');
 const DeviceToken = require('../models/deviceToken.model');
 

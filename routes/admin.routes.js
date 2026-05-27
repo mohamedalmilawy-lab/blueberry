@@ -35,10 +35,7 @@ router.get('/stats', adminController.getDashboardStats);
 
 //الاشعارات التي تصل الى الادمن حين يتم انشاء طلب جديد
 router.get('/order-notifications', adminNotificationController.listAdminNotifications);
-router.patch(
-    '/order-notifications/:id/read',
-    adminNotificationController.markNotificationRead
-);
+router.patch('/order-notifications/:id/read',adminNotificationController.markNotificationRead);
 
 //الاشعارات التي يرسلها الادمن الى الزبائن
 router.post('/push/broadcast', validate(broadcastPushSchema), adminController.broadcastPush);

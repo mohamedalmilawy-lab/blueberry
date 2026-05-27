@@ -9,31 +9,31 @@ const User = require('../models/user.model');
  */
 exports.sendMessage = asyncHandler(async (req, res) => { 
     let senderName;
-    let senderEmail;
+    let senderPhone;
 
     if (req.user) {
         const user = await User.findById(req.user.id);
         senderName = user.fullName;
-        senderEmail = user.email;
+        senderPhone = (user.phone) ? user.phone: "";
     } else {
         senderName = req.body.fullName;
-        senderEmail = req.body.email;
+        senderPhone = (req.body.phone) ? req.body.phone: "";
     }
 
     const subject = req.body.subject || 'رسالة جديدة من Blue Berry';
     const message = req.body.message;
 
-    if (!senderName || !senderEmail || !message) {
+    if (!senderName || !message) {
         return res.status(400).json({ 
-            message: "الرجاء تعبئة جميع الحقول المطلوبة. إذا كنت زائراً، تأكد من إدخال الاسم والإيميل والرسالة." 
+            message: "الرجاء تعبئة جميع الحقول المطلوبة. إذا كنت زائراً، تأكد من إدخال الاسم والرقم والرسالة." 
         });
     }
 
     const emailMessage = `
-        لقد تلقيت رسالة جديدة من صفحة "اتصل بنا" في متجرك.
+        لقد تلقيت رسالة جديدة من صفحة "اتصل بنا" في متجر Blue Berry.
         --------------------------------------------------
         اسم المرسل: ${senderName}
-        بريد المرسل: ${senderEmail}
+        رقم المرسل: ${senderPhone}
         ${req.user ? '(مستخدم مسجل في النظام)' : '(زائر)'}
         --------------------------------------------------
         نص الرسالة:

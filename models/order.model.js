@@ -57,7 +57,7 @@ const orderSchema = new Schema({
     payment: {
         method: {
             type: String,
-            enum: ['الدفع عند التسليم'], // COD فقط
+            enum: 'الدفع عند التسليم', // COD فقط
             required: true
         },
         status: {
