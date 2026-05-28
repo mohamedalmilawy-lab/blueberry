@@ -6,7 +6,7 @@ const { getIo } = require('../config/socket');
  */
 async function notifyAdminNewOrder(order) {
     const title = 'طلب جديد';
-    const body = `تم إنشاء طلب جديد برقم ${order._id} بقيمة ${order.totalPrice}.`;
+    const body = `تم إنشاء طلب جديد برقم ${order._id} بقيمة ${order.finalPrice}.`;
 
     const notification = await AdminNotification.create({
         type: 'new_order',
