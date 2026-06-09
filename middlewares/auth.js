@@ -8,7 +8,7 @@ const { getJwtSecret } = require('../utils/signToken');
 module.exports = async function auth(req, res, next) {
     const token = req.header('x-auth-token');
     if (!token) {
-        return res.status(401).json({ message: 'Access denied. No token provided.' });
+        return res.status(401).json({ message: 'تم رفض الوصول. لم يتم تقديم رمز.' });
     }
 
     try {
@@ -16,13 +16,13 @@ module.exports = async function auth(req, res, next) {
         const user = await User.findById(decoded.id).select('tokenVersion role');
 
         if (!user) {
-            return res.status(401).json({ message: 'User no longer exists.' });
+            return res.status(401).json({ message: 'المستخدم لم يعد موجودًا.' });
         }
 
         const versionInToken = decoded.tokenVersion ?? 0;
         const versionInDb = user.tokenVersion ?? 0;
         if (versionInToken !== versionInDb) {
-            return res.status(401).json({ message: 'Session ended. Please sign in again.' });
+            return res.status(401).json({ message: 'انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.' });
         }
 
         req.user = {
@@ -33,11 +33,11 @@ module.exports = async function auth(req, res, next) {
         next();
     } catch (ex) {
         if (ex.name === 'TokenExpiredError') {
-            return res.status(401).json({ message: 'Token expired.' });
+            return res.status(401).json({ message: 'انتهت صلاحية الرمز.' });
         }
         if (ex.name === 'JsonWebTokenError') {
-            return res.status(401).json({ message: 'Invalid token.' });
+            return res.status(401).json({ message: 'الرمز غير صالح.' });
         }
-        return res.status(401).json({ message: 'Authentication failed.' });
+        return res.status(401).json({ message: 'فشلت المصادقة.' });
     }
 };

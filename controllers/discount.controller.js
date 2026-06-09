@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const Discount = require('../models/discount.model');
 const User = require('../models/user.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 
 // ─────────────────────────────────────────────
 //  ADMIN CONTROLLERS
@@ -29,11 +30,7 @@ exports.createDiscountCode = asyncHandler(async (req, res) => {
         maxUsageLimit,
     });
 
-    res.status(201).json({
-        success: true,
-        message: 'تم إنشاء كود الخصم بنجاح',
-        data: discount,
-    });
+    return ApiResponse.created(res, 'تم إنشاء كود الخصم بنجاح', discount);
 });
 
 /**
@@ -45,7 +42,7 @@ exports.listDiscountCodes = asyncHandler(async (req, res) => {
     const discounts = await Discount.find().sort({ createdAt: -1 })
         .populate({ path: 'assignedUser', select: 'fullName email phone' });
 
-    res.json({ success: true, data: discounts });
+    return ApiResponse.ok(res, 'تم جلب أكواد الخصم بنجاح', discounts);
 });
 
 /**
@@ -61,7 +58,7 @@ exports.getDiscountCode = asyncHandler(async (req, res) => {
         throw new AppError('كود الخصم غير موجود', 404);
     }
 
-    res.json({ success: true, data: discount });
+    return ApiResponse.ok(res, 'تم جلب كود الخصم بنجاح', discount);
 });
 
 /**
@@ -74,7 +71,7 @@ exports.deleteDiscountCode = asyncHandler(async (req, res) => {
     if (!discount) {
         throw new AppError('كود الخصم غير موجود', 404);
     }
-    res.json({ success: true, message: 'تم حذف كود الخصم' });
+    return ApiResponse.ok(res, 'تم حذف كود الخصم');
 });
 
 // ─────────────────────────────────────────────
@@ -118,15 +115,9 @@ exports.applyDiscountCode = asyncHandler(async (req, res) => {
         throw new AppError('تم تجاوز حد الاستخدام لهذا الكود', 400);
     }
 
-    // ✨ تم إزالة أسطر زيادة العداد من هنا لأن الفحص مجرد معاينة قبل الشراء ✨
-
-    res.json({
-        success: true,
-        message: 'كود الخصم صالح وجاهز للتطبيق',
-        data: {
-            code: discount.code,
-            discountPercentage: discount.discountPercentage,
-            remainingUses: discount.maxUsageLimit - discount.currentUsageCount,
-        },
+    return ApiResponse.ok(res, 'كود الخصم صالح وجاهز للتطبيق', {
+        code: discount.code,
+        discountPercentage: discount.discountPercentage,
+        remainingUses: discount.maxUsageLimit - discount.currentUsageCount,
     });
 });

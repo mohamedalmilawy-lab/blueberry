@@ -1,6 +1,7 @@
 //تسجيل توكن الجهاز لارسال للمستهدم اشعارات
 const asyncHandler = require('express-async-handler');
 const DeviceToken = require('../models/deviceToken.model');
+const ApiResponse = require('../utils/ApiResponse');
 
 /**
  * @route   POST /api/devices/push-token
@@ -16,5 +17,5 @@ exports.registerPushToken = asyncHandler(async (req, res) => {
         { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    res.status(200).json({ success: true, message: 'تم تسجيل الجهاز للإشعارات' });
+    return ApiResponse.ok(res, 'تم تسجيل الجهاز للإشعارات');
 });

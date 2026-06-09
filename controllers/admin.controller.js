@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/user.model');
 const Order = require('../models/order.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const { getPaginationFromQuery } = require('../utils/pagination');
 const DeviceToken = require('../models/deviceToken.model');
 const { isFcmConfigured, sendMulticastToTokens } = require('../utils/fcm');
@@ -33,14 +34,11 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
     const totalSales = salesAgg[0]?.totalSales ?? 0;
     const newUsersLast30Days = growth[0]?.newUsersLast30Days ?? 0;
 
-    res.json({
-        success: true,
-        data: {
-            totalSales,
-            totalOrders: ordersCount,
-            totalUsers: usersCount,
-            newUsersLast30Days
-        }
+    return ApiResponse.ok(res, 'تم جلب إحصائيات لوحة التحكم بنجاح', {
+        totalSales,
+        totalOrders: ordersCount,
+        totalUsers: usersCount,
+        newUsersLast30Days
     });
 });
 
@@ -68,9 +66,8 @@ exports.listUsers = asyncHandler(async (req, res) => {
         User.countDocuments(filter)
     ]);
 
-    res.json({
-        success: true,
-        data: items,
+    return ApiResponse.ok(res, 'تم جلب المستخدمين بنجاح', {
+        items,
         meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
     });
 });
@@ -84,7 +81,7 @@ exports.getUserById = asyncHandler(async (req, res) => {
     if (!user) {
         throw new AppError('المستخدم غير موجود', 404);
     }
-    res.json({ success: true, data: user });
+    return ApiResponse.ok(res, 'تم جلب المستخدم بنجاح', user);
 });
 
 /**
@@ -110,7 +107,7 @@ exports.createUser = asyncHandler(async (req, res) => {
     });
 
     const safe = await User.findById(user._id).select('-password');
-    res.status(201).json({ success: true, data: safe });
+    return ApiResponse.created(res, 'تم إنشاء المستخدم بنجاح', safe);
 });
 
 /**
@@ -160,7 +157,7 @@ exports.updateUser = asyncHandler(async (req, res) => {
 
     await user.save();
     const safe = await User.findById(user._id).select('-password');
-    res.json({ success: true, data: safe });
+    return ApiResponse.ok(res, 'تم تحديث المستخدم بنجاح', safe);
 });
 
 /**
@@ -175,7 +172,7 @@ exports.deleteUser = asyncHandler(async (req, res) => {
     if (!user) {
         throw new AppError('المستخدم غير موجود', 404);
     }
-    res.json({ success: true, message: 'تم حذف المستخدم' });
+    return ApiResponse.ok(res, 'تم حذف المستخدم');
 });
 
 /**
@@ -191,10 +188,10 @@ exports.broadcastPush = asyncHandler(async (req, res) => {
     const tokens = await DeviceToken.distinct('token');
 
     if (tokens.length === 0) {
-        return res.json({
-            success: true,
-            data: { successCount: 0, failureCount: 0, totalTokens: 0 },
-            message: 'لا توجد أجهزة مسجّلة لإرسال الإشعار إليها'
+        return ApiResponse.ok(res, 'لا توجد أجهزة مسجّلة لإرسال الإشعار إليها', {
+            successCount: 0,
+            failureCount: 0,
+            totalTokens: 0
         });
     }
 
@@ -203,12 +200,9 @@ exports.broadcastPush = asyncHandler(async (req, res) => {
         body: message
     });
 
-    res.json({
-        success: true,
-        data: {
-            successCount,
-            failureCount,
-            totalTokens: tokens.length
-        }
+    return ApiResponse.ok(res, 'تم إرسال الرسالة الجماعية بنجاح', {
+        successCount,
+        failureCount,
+        totalTokens: tokens.length
     });
 });

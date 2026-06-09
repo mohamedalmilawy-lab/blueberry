@@ -4,7 +4,7 @@ const getJwtSecret = () => {
     const secret = process.env.JWT_SECRET;
     if (!secret || secret === 'YOUR_JWT_SECRET') {
         if (process.env.NODE_ENV === 'production') {
-            throw new Error('JWT_SECRET must be set in production');
+            throw new Error('يجب تعيين قيمة JWT_SECRET في بيئة الإنتاج');
         }
     }
     return secret || 'YOUR_JWT_SECRET';

@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const { getPaginationFromQuery } = require('../utils/pagination');
 
 const productPopulate = { path: 'category', select: 'name image isActive parent' };
@@ -51,6 +52,7 @@ function sortFromQuery(sortKey) {
 /**
  * @route   GET /api/products
  * @access  Public
+ *
  */
 exports.listProducts = asyncHandler(async (req, res) => {
     const { page, limit, skip } = getPaginationFromQuery(req.query);
@@ -62,9 +64,8 @@ exports.listProducts = asyncHandler(async (req, res) => {
         Product.countDocuments(filter)
     ]);
 
-    res.json({
-        success: true,
-        data: items,
+    return ApiResponse.ok(res, 'تم جلب المنتجات بنجاح', {
+        items,
         meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
     });
 });
@@ -72,60 +73,59 @@ exports.listProducts = asyncHandler(async (req, res) => {
 /**
  * @route   GET /api/products/:id
  * @access  Public
+ *
+ * ✅ EXAMPLE — Successful GET (single resource)
+ * ❌ EXAMPLE — 404 Not Found (resource does not exist)
  */
 exports.getProduct = asyncHandler(async (req, res) => {
     const product = await Product.findById(req.params.id).populate(productPopulate);
+
     if (!product || !product.isActive) {
+        // AppError is caught by the global errorHandler middleware → returns standard envelope
         throw new AppError('المنتج غير موجود', 404);
     }
-    res.json({ success: true, data: product });
+
+    return ApiResponse.ok(res, 'تم جلب المنتج بنجاح', product);
 });
 
-//get latest product
+// @desc    جلب أحدث المنتجات
 exports.latest = asyncHandler(async (req, res) => {
-    const latestProducts = await Product.find().sort({ createdAt: -1 }) .limit(10);
-    res.json(latestProducts); 
+    const latestProducts = await Product.find().sort({ createdAt: -1 }).limit(10);
+    return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', latestProducts);
 });
 
 // @desc    جلب المنتجات الأكثر طلبًا
-// @route   GET /api/products/most-requested  (تم تعديل المسار ليكون أوضح)
+// @route   GET /api/products/most-requested
 exports.getMostRequested = asyncHandler(async (req, res) => {
-    // 1. ابحث عن المنتجات التي تكون "الأكثر طلباً" و "فعالة"
-    const mostRequestedProducts = await Product.find({ 
-        isMostRequested: true, 
-        isActive: true 
+    const mostRequestedProducts = await Product.find({
+        isMostRequested: true,
+        isActive: true
     })
-    .sort({ createdAt: -1 }) // 2. رتبها من الأحدث إلى الأقدم
-    .limit(15) // 3. حدد عدد النتائج (مثلاً 10 منتجات)
-    .populate(productPopulate); // 4. أضف بيانات التصنيف
+        .sort({ createdAt: -1 })
+        .limit(15)
+        .populate(productPopulate);
 
-    // 5. أرسل النتائج كاستجابة
-    res.json({ success: true, data: mostRequestedProducts });
+    return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', mostRequestedProducts);
 });
 
 // @desc    جلب جميع المنتجات التي عليها عروض سارية
 // @route   GET /api/products/offers
 // @access  Public
 exports.getOfferProducts = asyncHandler(async (req, res) => {
-    // الحصول على تاريخ ووقت الآن
     const now = new Date();
 
-    // بناء شروط البحث
     const filter = {
-        isActive: true, // 1. يجب أن يكون المنتج فعالاً
-        offerPrice: { $exists: true, $ne: null }, // 2. يجب أن يوجد سعر للعرض
-        offerEndDate: { $exists: true, $gte: now } // 3. تاريخ انتهاء العرض يجب أن يكون أكبر من أو يساوي تاريخ اليوم
+        isActive: true,
+        offerPrice: { $exists: true, $ne: null },
+        offerEndDate: { $exists: true, $gte: now }
     };
 
-    // البحث في قاعدة البيانات مع تطبيق الشروط والترتيب
     const offerProducts = await Product.find(filter)
-        .sort({ offerEndDate: 1 }) // ترتيب المنتجات حسب تاريخ انتهاء العرض (العروض التي ستنتهي قريباً تظهر أولاً)
-        .populate(productPopulate); // جلب بيانات التصنيف
+        .sort({ offerEndDate: 1 })
+        .populate(productPopulate);
 
-    // إرسال الرد
-    res.json({ success: true, data: offerProducts });
+    return ApiResponse.ok(res, 'تم جلب منتجات العروض بنجاح', offerProducts);
 });
-
 
 /**
  * @route   GET /api/admin/products/:id
@@ -136,7 +136,7 @@ exports.adminGetProduct = asyncHandler(async (req, res) => {
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
     }
-    res.json({ success: true, data: product });
+    return ApiResponse.ok(res, 'تم جلب المنتج بنجاح', product);
 });
 
 /**
@@ -153,9 +153,8 @@ exports.adminListProducts = asyncHandler(async (req, res) => {
         Product.countDocuments(filter)
     ]);
 
-    res.json({
-        success: true,
-        data: items,
+    return ApiResponse.ok(res, 'تم جلب المنتجات بنجاح', {
+        items,
         meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
     });
 });
@@ -163,15 +162,20 @@ exports.adminListProducts = asyncHandler(async (req, res) => {
 /**
  * @route   POST /api/admin/products
  * @access  Private / أدمن
+ *
+ * ✅ EXAMPLE — Successful POST (resource creation → 201 Created)
+ * ❌ EXAMPLE — 400 Bad Request (invalid reference)
  */
 exports.adminCreateProduct = asyncHandler(async (req, res) => {
     const category = await Category.findById(req.body.category);
     if (!category) {
         throw new AppError('التصنيف غير موجود', 400);
     }
+
     const product = await Product.create(req.body);
     const populated = await Product.findById(product._id).populate(productPopulate);
-    res.status(201).json({ success: true, data: populated });
+
+    return ApiResponse.created(res, 'تم إنشاء المنتج بنجاح', populated);
 });
 
 /**
@@ -185,6 +189,7 @@ exports.adminUpdateProduct = asyncHandler(async (req, res) => {
             throw new AppError('التصنيف غير موجود', 400);
         }
     }
+
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
         new: true,
         runValidators: true
@@ -194,7 +199,7 @@ exports.adminUpdateProduct = asyncHandler(async (req, res) => {
         throw new AppError('المنتج غير موجود', 404);
     }
 
-    res.json({ success: true, data: product });
+    return ApiResponse.ok(res, 'تم تحديث المنتج بنجاح', product);
 });
 
 /**
@@ -212,7 +217,7 @@ exports.adminToggleFeatured = asyncHandler(async (req, res) => {
         throw new AppError('المنتج غير موجود', 404);
     }
 
-    res.json({ success: true, data: product });
+    return ApiResponse.ok(res, 'تم تحديث المنتج بنجاح', product);
 });
 
 /**
@@ -224,5 +229,5 @@ exports.adminDeleteProduct = asyncHandler(async (req, res) => {
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
     }
-    res.json({ success: true, message: 'تم حذف المنتج' });
+    return ApiResponse.ok(res, 'تم حذف المنتج بنجاح', null);
 });

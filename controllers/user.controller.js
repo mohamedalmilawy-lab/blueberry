@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/user.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const bcrypt = require('bcryptjs');
 
@@ -19,7 +20,7 @@ exports.getMe = asyncHandler(async (req, res) => {
     if (!user) {
         throw new AppError('المستخدم غير موجود', 404);
     }
-    res.json(user);
+    return ApiResponse.ok(res, 'تم جلب الملف الشخصي بنجاح', user);
 });
 
 /**
@@ -66,10 +67,7 @@ exports.updateMe = asyncHandler(async (req, res) => {
     //  إرجاع المستخدم بعد التحديث
     const updated = await User.findById(user._id).select('-password').populate(userPopulate); 
 
-    res.status(200).json({
-        success: true,
-        data: updated
-    });
+    return ApiResponse.ok(res, 'تم تحديث الملف الشخصي بنجاح', updated);
 });
 
 exports.changePassword = asyncHandler(async (req, res, next) => {
@@ -90,5 +88,5 @@ exports.changePassword = asyncHandler(async (req, res, next) => {
 
     await user.save();
 
-    res.status(200).json({message: 'تم تغيير كلمة المرور بنجاح!'});
+    return ApiResponse.ok(res, 'تم تغيير كلمة المرور بنجاح!');
 });

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const User = require('../models/user.model');
 const Product = require('../models/product.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
 
 const cartPopulate = { path: 'cart.product', select: 'name price images category isActive offerPrice offerEndDate' };
@@ -58,12 +59,9 @@ exports.getCart = asyncHandler(async (req, res) => {
 
     const { lines, subtotal } = computeCartTotals(user.cart, map);
 
-    res.json({
-        success: true,
-        data: {
-            items: lines,
-            subtotal
-        }
+    return ApiResponse.ok(res, 'تم جلب سلة المشتريات بنجاح', {
+        items: lines,
+        subtotal
     });
 });
 
@@ -102,10 +100,7 @@ exports.addCartItem = asyncHandler(async (req, res) => {
     );
     const { lines, subtotal } = computeCartTotals(refreshed.cart, map);
 
-    res.status(201).json({
-        success: true,
-        data: { items: lines, subtotal }
-    });
+    return ApiResponse.created(res, 'تمت إضافة العنصر إلى السلة', { items: lines, subtotal });
 });
 
 /**
@@ -134,13 +129,9 @@ exports.removeCartItem = asyncHandler(async (req, res) => {
   );
   const { lines, subtotal } = computeCartTotals(refreshed.cart, map);
 
-  res.json({ 
-      success: true, 
-      message: 'تمت إزالة المنتج من السلة',
-      data: { 
-          items: lines, 
-          subtotal 
-      } 
+  return ApiResponse.ok(res, 'تمت إزالة المنتج من السلة', {
+      items: lines,
+      subtotal
   });
 });
 
@@ -174,5 +165,5 @@ exports.decrementCartItem = asyncHandler(async (req, res) => {
     );
     const { lines, subtotal } = computeCartTotals(refreshed.cart, map);
 
-    res.json({ success: true, data: { items: lines, subtotal } });
+    return ApiResponse.ok(res, 'تم تحديث سلة المشتريات بنجاح', { items: lines, subtotal });
 });

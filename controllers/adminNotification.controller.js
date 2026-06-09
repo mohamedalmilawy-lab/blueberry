@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const AdminNotification = require('../models/adminNotification.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const { getPaginationFromQuery } = require('../utils/pagination');
 
 /**
@@ -22,9 +23,8 @@ exports.listAdminNotifications = asyncHandler(async (req, res) => {
         AdminNotification.countDocuments(filter)
     ]);
 
-    res.json({
-        success: true,
-        data: items,
+    return ApiResponse.ok(res, 'تم جلب الإشعارات بنجاح', {
+        items,
         meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
     });
 });
@@ -43,5 +43,5 @@ exports.markNotificationRead = asyncHandler(async (req, res) => {
     if (!doc) {
         throw new AppError('الإشعار غير موجود', 404);
     }
-    res.json({ success: true, data: doc });
+    return ApiResponse.ok(res, 'تم تحديد الإشعار كمقروء', doc);
 });

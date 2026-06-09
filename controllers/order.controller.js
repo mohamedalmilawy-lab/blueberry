@@ -5,6 +5,7 @@ const Product = require('../models/product.model');
 const User = require('../models/user.model');
 const Discount = require('../models/discount.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
 const {
     createOrderSchema,
@@ -236,7 +237,7 @@ exports.createOrder = asyncHandler(async (req, res) => {
         stripUnknown: true
     });
     if (error) {
-        return res.status(400).json({ errors: joiToErrors(error) });
+        return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
     }
 
     const { items, totalPrice } = await normalizeOrderItems(value.items);
@@ -306,7 +307,7 @@ exports.createOrder = asyncHandler(async (req, res) => {
     }
 
     const populated = await Order.findById(order._id).populate(orderPopulate);
-    res.status(201).json({ success: true, data: populated });
+    return ApiResponse.created(res, 'تم إنشاء الطلب بنجاح', populated);
 });
 
 /**
@@ -323,7 +324,7 @@ exports.listOrders = asyncHandler(async (req, res) => {
     }
 
     const orders = await Order.find(filter).sort({ createdAt: -1 }).populate(orderPopulate);
-    res.json({ success: true, data: orders });
+    return ApiResponse.ok(res, 'تم جلب الطلبات بنجاح', orders);
 });
 
 /**
@@ -336,7 +337,7 @@ exports.getOrderById = asyncHandler(async (req, res) => {
         throw new AppError('الطلب غير موجود', 404);
     }
     assertCanViewOrder(order, req);
-    res.json({ success: true, data: order });
+    return ApiResponse.ok(res, 'تم جلب الطلب بنجاح', order);
 });
 
 /**
@@ -358,7 +359,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             stripUnknown: true
         });
         if (error) {
-            return res.status(400).json({ errors: joiToErrors(error) });
+            return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
         }
         if (value.user !== undefined) order.user = value.user;
         if (value.guestDetails !== undefined) order.guestDetails = value.guestDetails;
@@ -390,7 +391,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
         }
         await order.save();
         const populated = await Order.findById(order._id).populate(orderPopulate);
-        return res.json({ success: true, data: populated });
+        return ApiResponse.ok(res, 'تم تحديث الطلب بنجاح', populated);
     }
 
     if (role === 'مشرف') {
@@ -399,12 +400,12 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             stripUnknown: true
         });
         if (error) {
-            return res.status(400).json({ errors: joiToErrors(error) });
+            return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
         }
         order.status = value.status;
         await order.save();
         const populated = await Order.findById(order._id).populate(orderPopulate);
-        return res.json({ success: true, data: populated });
+        return ApiResponse.ok(res, 'تم تحديث الطلب بنجاح', populated);
     }
 
     if (role === 'موظف توصيل') {
@@ -421,7 +422,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             stripUnknown: true
         });
         if (error) {
-            return res.status(400).json({ errors: joiToErrors(error) });
+            return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
         }
 
         if (value.status === 'تم التوصيل' && order.payment.method === 'الدفع عند التسليم') {
@@ -435,7 +436,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
         order.status = value.status;
         await order.save();
         const populated = await Order.findById(order._id).populate(orderPopulate);
-        return res.json({ success: true, data: populated });
+        return ApiResponse.ok(res, 'تم تحديث الطلب بنجاح', populated);
     }
 
     const isOwnerCustomer = role === 'زبون' && order.user && order.user.toString() === uid;
@@ -455,7 +456,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
                 stripUnknown: true
             });
             if (error) {
-                return res.status(400).json({ errors: joiToErrors(error) });
+                return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
             }
             if (value.items) {
                 const { items, totalPrice } = await normalizeOrderItems(value.items);
@@ -489,7 +490,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             if (value.note !== undefined) order.note = value.note;
             await order.save();
             const populated = await Order.findById(order._id).populate(orderPopulate);
-            return res.json({ success: true, data: populated });
+            return ApiResponse.ok(res, 'تم تحديث الطلب بنجاح', populated);
         }
 
         if (order.status === 'قيد التحضير' || order.status === 'تم التحضير') {
@@ -498,7 +499,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
                 stripUnknown: true
             });
             if (error) {
-                return res.status(400).json({ errors: joiToErrors(error) });
+                return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
             }
             if (value.addresses) {
                 order.addresses = value.addresses;
@@ -507,7 +508,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
             if (value.note !== undefined) order.note = value.note;
             await order.save();
             const populated = await Order.findById(order._id).populate(orderPopulate);
-            return res.json({ success: true, data: populated });
+            return ApiResponse.ok(res, 'تم تحديث الطلب بنجاح', populated);
         }
 
         throw new AppError('لا يمكن تعديل الطلب في هذه المرحلة', 400);

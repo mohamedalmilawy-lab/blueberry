@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const Category = require('../models/category.model');
 const Product = require('../models/product.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 
 const categoryPopulate = { path: 'parent', select: 'name image isActive' };
 
@@ -12,7 +13,7 @@ const categoryPopulate = { path: 'parent', select: 'name image isActive' };
 exports.listCategories = asyncHandler(async (req, res) => {
     const filter = { isActive: true };
     const categories = await Category.find(filter).sort({ name: 1 }).populate(categoryPopulate);
-    res.json({ success: true, data: categories });
+    return ApiResponse.ok(res, 'تم جلب الأقسام بنجاح', categories);
 });
 
 /**
@@ -24,7 +25,7 @@ exports.getCategory = asyncHandler(async (req, res) => {
     if (!category || !category.isActive) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    res.json({ success: true, data: category });
+    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', category);
 });
 
 /**
@@ -36,7 +37,7 @@ exports.adminGetCategory = asyncHandler(async (req, res) => {
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    res.json({ success: true, data: category });
+    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', category);
 });
 
 /**
@@ -45,7 +46,7 @@ exports.adminGetCategory = asyncHandler(async (req, res) => {
  */
 exports.adminListCategories = asyncHandler(async (req, res) => {
     const categories = await Category.find().sort({ createdAt: -1 }).populate(categoryPopulate);
-    res.json({ success: true, data: categories });
+    return ApiResponse.ok(res, 'تم جلب الأقسام بنجاح', categories);
 });
 
 /**
@@ -54,7 +55,7 @@ exports.adminListCategories = asyncHandler(async (req, res) => {
  */
 exports.adminCreateCategory = asyncHandler(async (req, res) => {
     const category = await Category.create(req.body);
-    res.status(201).json({ success: true, data: category });
+    return ApiResponse.created(res, 'تم إنشاء القسم بنجاح', category);
 });
 
 /**
@@ -71,7 +72,7 @@ exports.adminUpdateCategory = asyncHandler(async (req, res) => {
         throw new AppError('التصنيف غير موجود', 404);
     }
 
-    res.json({ success: true, data: category });
+    return ApiResponse.ok(res, 'تم تحديث القسم بنجاح', category);
 });
 
 /**
@@ -87,5 +88,5 @@ exports.adminDeleteCategory = asyncHandler(async (req, res) => {
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    res.json({ success: true, message: 'تم حذف التصنيف' });
+    return ApiResponse.ok(res, 'تم حذف التصنيف');
 });

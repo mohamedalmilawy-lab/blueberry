@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler');
 const bcrypt = require('bcryptjs');
 const User = require('../models/user.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const { signToken } = require('../utils/signToken');
 const sendEmail = require('../utils/sendEmail');
 
@@ -56,7 +57,7 @@ exports.register = asyncHandler(async (req, res) => {
     const token = signToken(user);
     const safeUser = await User.findById(user._id).select('-password');
 
-    res.status(201).json({
+    return ApiResponse.created(res, 'تم إنشاء الحساب بنجاح', {
         token,
         user: safeUser
     });
@@ -96,7 +97,7 @@ exports.login = asyncHandler(async (req, res) => {
     const token = signToken(user);
     const safeUser = await User.findById(user._id).select('-password');
 
-    res.json({
+    return ApiResponse.ok(res, 'تم تسجيل الدخول بنجاح', {
         token,
         user: safeUser
     });
@@ -112,7 +113,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
-        return res.json({ message: 'إذا كان البريد مسجلاً لدينا، ستصلك تعليمات إعادة تعيين كلمة المرور قريباً.' });
+        return ApiResponse.ok(res, 'إذا كان البريد مسجلاً لدينا، ستصلك تعليمات إعادة تعيين كلمة المرور قريباً.');
     }
 
     // 1. إنشاء الرمز وحفظه مشفراً في الداتا بيز
@@ -134,7 +135,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
             message: message
         });
 
-        res.json({ message: 'إذا كان البريد مسجلاً لدينا، ستصلك تعليمات إعادة تعيين كلمة المرور قريباً.' });
+        return ApiResponse.ok(res, 'إذا كان البريد مسجلاً لدينا، ستصلك تعليمات إعادة تعيين كلمة المرور قريباً.');
 
     } catch (err) {
         // إذا فشل إرسال الإيميل، يجب أن نمسح الرمز من الداتا بيز كإجراء أمني
@@ -173,7 +174,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
 
-    res.json({ message: 'تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.' });
+    return ApiResponse.ok(res, 'تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
 });
 
 /**
@@ -183,5 +184,5 @@ exports.resetPassword = asyncHandler(async (req, res) => {
  */
 exports.logout = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(req.user.id, { $inc: { tokenVersion: 1 } });
-    res.json({ message: 'تم تسجيل الخروج بنجاح' });
+    return ApiResponse.ok(res, 'تم تسجيل الخروج بنجاح');
 });

@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/user.model');
 const Product = require('../models/product.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 
 const favPopulate = { path: 'favorites', select: 'name price images category isActive isMostRequested offerPrice offerEndDate' };
 
@@ -14,7 +15,7 @@ exports.listFavorites = asyncHandler(async (req, res) => {
     if (!user) {
         throw new AppError('المستخدم غير موجود', 404);
     }
-    res.json({ success: true, data: user.favorites });
+    return ApiResponse.ok(res, 'تم جلب المفضلة بنجاح', user.favorites);
 });
 
 /**
@@ -34,14 +35,14 @@ exports.addFavorite = asyncHandler(async (req, res) => {
 
     const exists = user.favorites.some((id) => id.toString() === req.params.productId);
     if (exists) {
-        return res.status(200).json({ success: true, message: 'المنتج موجود بالفعل في المفضلة' });
+        return ApiResponse.ok(res, 'المنتج موجود بالفعل في المفضلة');
     }
 
     user.favorites.push(product._id);
     await user.save();
 
     const refreshed = await User.findById(user._id).select('favorites').populate(favPopulate);
-    res.status(201).json({ success: true, data: refreshed.favorites });
+    return ApiResponse.created(res, 'تمت إضافة المنتج إلى المفضلة', refreshed.favorites);
 });
 
 /**
@@ -61,9 +62,5 @@ exports.removeFavorite = asyncHandler(async (req, res) => {
     await user.save();
     const refreshed = await User.findById(user._id).select('favorites').populate(favPopulate);
     
-    res.json({ 
-        success: true, 
-        message: 'تمت إزالة المنتج من المفضلة',
-        data: refreshed.favorites 
-    });
+    return ApiResponse.ok(res, 'تمت إزالة المنتج من المفضلة', refreshed.favorites);
 });

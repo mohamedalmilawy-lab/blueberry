@@ -1,3 +1,5 @@
+const ApiResponse = require('../utils/ApiResponse');
+
 const validate = (schema) => {
     return (req, res, next) => {
         // التحقق من البيانات القادمة في req.body
@@ -9,7 +11,7 @@ const validate = (schema) => {
                 field: detail.path.join('.'),
                 message: detail.message.replace(/['"]/g, '')
             }));
-            return res.status(400).json({ errors });
+            return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', errors);
         }
         next();
     };

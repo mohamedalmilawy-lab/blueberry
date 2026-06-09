@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Banner = require('../models/banner.model');
 const AppError = require('../utils/AppError');
+const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
 
@@ -10,7 +11,7 @@ const Category = require('../models/category.model');
  */
 exports.listActiveBanners = asyncHandler(async (req, res) => {
     const data = await Banner.find({ status: 'Active' }).sort({ createdAt: -1 });
-    res.json({ success: true, data });
+    return ApiResponse.ok(res, 'تم جلب اللافتات الإعلانية بنجاح', data);
 });
 
 
@@ -36,12 +37,9 @@ exports.getBanner = asyncHandler(async (req, res, next) => {
         relatedData = await Product.find({ category: { $in: link } }).populate('category');
     }
 
-    res.json({ 
-        success: true, 
-        data: {
-            banner,
-            relatedData // هنا ستجد المنتجات أو الفئات التي طلبناها
-        } 
+    return ApiResponse.ok(res, 'تم جلب اللافتة الإعلانية بنجاح', {
+        banner,
+        relatedData
     });
 });
 
@@ -52,7 +50,7 @@ exports.getBanner = asyncHandler(async (req, res, next) => {
  */
 exports.adminListBanners = asyncHandler(async (req, res) => {
     const data = await Banner.find().sort({ createdAt: -1 });
-    res.json({ success: true, data });
+    return ApiResponse.ok(res, 'تم جلب اللافتات الإعلانية بنجاح', data);
 });
 
 /**
@@ -77,12 +75,9 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
         relatedData = await Product.find({ category: { $in: link } }).populate('category');
     }
 
-    res.json({ 
-        success: true, 
-        data: {
-            banner,
-            relatedData // هنا ستجد المنتجات أو الفئات التي طلبناها
-        } 
+    return ApiResponse.ok(res, 'تم جلب اللافتة الإعلانية بنجاح', {
+        banner,
+        relatedData
     });
 });
 
@@ -92,7 +87,7 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
  */
 exports.adminCreateBanner = asyncHandler(async (req, res) => {
     const banner = await Banner.create(req.body);
-    res.status(201).json({ success: true, data: banner });
+    return ApiResponse.created(res, 'تم إنشاء اللافتة الإعلانية بنجاح', banner);
 });
 
 /**
@@ -107,7 +102,7 @@ exports.adminUpdateBanner = asyncHandler(async (req, res) => {
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
-    res.json({ success: true, data: banner });
+    return ApiResponse.ok(res, 'تم تحديث اللافتة الإعلانية بنجاح', banner);
 });
 
 /**
@@ -119,5 +114,5 @@ exports.adminDeleteBanner = asyncHandler(async (req, res) => {
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
-    res.json({ success: true, message: 'تم حذف الإعلان' });
+    return ApiResponse.ok(res, 'تم حذف الإعلان');
 });

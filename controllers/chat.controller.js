@@ -1,12 +1,13 @@
 const asyncHandler = require('express-async-handler');
 const Category = require('../models/category.model');
 const Product = require('../models/product.model');
+const ApiResponse = require('../utils/ApiResponse');
 
 exports.chat = asyncHandler(async (req, res) => {
     const { message: userMessage, history = [] } = req.body;
 
     if (!userMessage) {
-        return res.status(400).json({ reply: "يرجى إرسال رسالة." });
+        return ApiResponse.badRequest(res, 'يرجى إرسال رسالة.');
     }
 
     // 1. جلب البيانات من قاعدة البيانات بالتوازي لتحسين السرعة
@@ -97,19 +98,19 @@ ${catalogInfo}
         if (!response.ok) {
             const errorData = await response.json();
             console.error("OpenRouter API Error:", errorData);
-            return res.status(502).json({ reply: "عذراً، أنا أواجه مشكلة بسيطة في الاتصال حالياً. هل يمكنك المحاولة مرة أخرى بعد لحظات؟ 🫐" });
+            return ApiResponse.send(res, 502, 'عذراً، أنا أواجه مشكلة بسيطة في الاتصال حالياً. هل يمكنك المحاولة مرة أخرى بعد لحظات؟ 🫐');
         }
 
         const data = await response.json();
         
         if (data.choices && data.choices.length > 0) {
-            return res.json({ reply: data.choices[0].message.content });
+            return ApiResponse.ok(res, 'تم إنشاء الرد بنجاح', { reply: data.choices[0].message.content });
         } else {
-            return res.status(500).json({ reply: "لم أستطع صياغة الرد المناسب حالياً، جرب سؤالي بطريقة أخرى! ✨" });
+            return ApiResponse.serverError(res, 'لم أستطع صياغة الرد المناسب حالياً، جرب سؤالي بطريقة أخرى! ✨');
         }
 
     } catch (error) {
         console.error("Chat Controller Error:", error);
-        return res.status(500).json({ reply: "حدث خطأ. يرجى إعادى المحاولة" });
+        return ApiResponse.serverError(res, 'حدث خطأ. يرجى إعادى المحاولة');
     }
 });

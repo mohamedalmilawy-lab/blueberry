@@ -1,3 +1,5 @@
+const ApiResponse = require('../utils/ApiResponse');
+
 /**
  * Validates req.query with Joi (coercion enabled).
  */
@@ -13,7 +15,7 @@ const validateQuery = (schema) => (req, res, next) => {
             field: detail.path.join('.'),
             message: detail.message.replace(/['"]/g, '')
         }));
-        return res.status(400).json({ errors });
+        return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', errors);
     }
     req.query = value;
     next();

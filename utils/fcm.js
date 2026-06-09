@@ -39,7 +39,7 @@ async function sendMulticastToTokens(tokens, { title, body }) {
     const admin = require('firebase-admin');
     const app = getFirebaseApp();
     if (!app) {
-        throw new Error('FCM is not configured');
+        throw new Error('خدمة الإشعارات غير مهيأة');
     }
     const unique = [...new Set(tokens.filter(Boolean))];
     if (unique.length === 0) {
