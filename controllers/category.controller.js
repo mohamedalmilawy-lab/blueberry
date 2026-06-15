@@ -12,6 +12,11 @@ const categoryPopulate = { path: 'parent', select: 'name image isActive' };
  */
 exports.listCategories = asyncHandler(async (req, res) => {
     const filter = { isActive: true };
+    
+    if (req.query.search) {
+        filter.name = { $regex: req.query.search, $options: 'i' };
+    }
+
     const categories = await Category.find(filter).sort({ name: 1 }).populate(categoryPopulate);
     return ApiResponse.ok(res, 'تم جلب الأقسام بنجاح', categories);
 });
@@ -25,7 +30,10 @@ exports.getCategory = asyncHandler(async (req, res) => {
     if (!category || !category.isActive) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', category);
+    
+    const products = await Product.find({ category: req.params.id, isActive: true });
+
+    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', { category, products });
 });
 
 /**

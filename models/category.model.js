@@ -20,6 +20,26 @@ const categorySchema = new Schema({
     isActive: {
         type: Boolean,
         default: true
+    },
+    color_1: {
+        type: String,
+        default: ''
+    },
+    color_2: {
+        type: String,
+        default: ''
+    },
+    bannerImage: {
+        type: String,
+        default: ''
+    },
+    bannerLink: {
+        type: String,
+        default: ''
+    },
+    isBannerActive: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: true
