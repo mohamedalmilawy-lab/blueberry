@@ -14,4 +14,8 @@ router.use('/banners', require('./banners.routes'));
 router.use('/devices', require('./devices.routes'));
 router.use('/discounts', require('./discount.routes'));
 
+router.get('/ping', (req, res) => {
+    res.status(200).json({ message: 'Server is awake' });
+});
+
 module.exports = router;
