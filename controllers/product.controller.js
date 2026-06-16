@@ -52,7 +52,6 @@ function sortFromQuery(sortKey) {
 /**
  * @route   GET /api/products
  * @access  Public
- *
  */
 exports.listProducts = asyncHandler(async (req, res) => {
     const { page, limit, skip } = getPaginationFromQuery(req.query);

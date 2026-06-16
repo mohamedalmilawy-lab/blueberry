@@ -10,7 +10,7 @@ const Category = require('../models/category.model');
  * @access  Public
  */
 exports.listActiveBanners = asyncHandler(async (req, res) => {
-    const data = await Banner.find({ status: 'Active' }).sort({ createdAt: -1 });
+    const data = await Banner.find({ isActive: true }).sort({ createdAt: -1 });
     return ApiResponse.ok(res, 'تم جلب اللافتات الإعلانية بنجاح', data);
 });
 
@@ -21,7 +21,7 @@ exports.listActiveBanners = asyncHandler(async (req, res) => {
  */
 exports.getBanner = asyncHandler(async (req, res, next) => {
     const banner = await Banner.findById(req.params.id);
-    if (!banner) {
+    if (!banner || !banner.isActive) {
         throw new AppError('الإعلان غير موجود', 404);
     }
 
@@ -34,7 +34,7 @@ exports.getBanner = asyncHandler(async (req, res, next) => {
     } 
     
     else if (linkType === 'Category' && link.length > 0) {
-        relatedData = await Product.find({ category: { $in: link } }).populate('category');
+        relatedData = await Category.find({ _id: { $in: link } });
     }
 
     return ApiResponse.ok(res, 'تم جلب اللافتة الإعلانية بنجاح', {
@@ -72,7 +72,7 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
     } 
     
     else if (linkType === 'Category' && link.length > 0) {
-        relatedData = await Product.find({ category: { $in: link } }).populate('category');
+        relatedData = await Category.find({ _id: { $in: link } });
     }
 
     return ApiResponse.ok(res, 'تم جلب اللافتة الإعلانية بنجاح', {

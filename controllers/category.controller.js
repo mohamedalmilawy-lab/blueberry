@@ -45,7 +45,9 @@ exports.adminGetCategory = asyncHandler(async (req, res) => {
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', category);
+    const products = await Product.find({ category: req.params.id});
+
+    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', { category, products });
 });
 
 /**
@@ -53,7 +55,13 @@ exports.adminGetCategory = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminListCategories = asyncHandler(async (req, res) => {
-    const categories = await Category.find().sort({ createdAt: -1 }).populate(categoryPopulate);
+    const filter = {};
+    
+    if (req.query.search) {
+        filter.name = { $regex: req.query.search, $options: 'i' };
+    }
+
+    const categories = await Category.find(filter).sort({ createdAt: -1 }).populate(categoryPopulate);
     return ApiResponse.ok(res, 'تم جلب الأقسام بنجاح', categories);
 });
 

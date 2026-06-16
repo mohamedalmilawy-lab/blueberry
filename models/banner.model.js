@@ -19,15 +19,14 @@ const bannerSchema = new Schema(
             default: 'Product'
         },        
         link: [{
-            type: String,
-            trim: true,
-            default: ''
+            type: Schema.Types.ObjectId,
+            required: true,
+            refPath: 'linkType'
         }],
-        status: {
-            type: String,
-            enum: ['Active', 'Inactive'],
-            default: 'Active'
-        }
+        isActive: {
+            type: Boolean,
+            default: true
+        },
     },
     { timestamps: true }
 );

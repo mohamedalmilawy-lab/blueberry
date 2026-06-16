@@ -28,18 +28,6 @@ const categorySchema = new Schema({
     color_2: {
         type: String,
         default: ''
-    },
-    bannerImage: {
-        type: String,
-        default: ''
-    },
-    bannerLink: {
-        type: String,
-        default: ''
-    },
-    isBannerActive: {
-        type: Boolean,
-        default: false
     }
 }, {
     timestamps: true
