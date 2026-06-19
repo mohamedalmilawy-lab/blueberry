@@ -17,6 +17,12 @@ const categorySchema = new Schema({
         ref: 'Category',
         default: null
     },
+    // ---- الحقل الخاص بالبانر الإعلاني ----
+    banner: {
+        type: Schema.Types.ObjectId,
+        ref: 'Banner', // نربطه بموديل البانر
+        default: null
+    },
     isActive: {
         type: Boolean,
         default: true

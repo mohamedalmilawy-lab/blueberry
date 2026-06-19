@@ -4,8 +4,10 @@ const Product = require('../models/product.model');
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 
-const categoryPopulate = { path: 'parent', select: 'name image isActive' };
-
+const categoryPopulate = [
+    { path: 'parent', select: 'name image isActive' },
+    { path: 'banner', select: 'imageUrl title linkType link isActive' } //  هذا هو السطر  الخاص بالبانر
+];
 /**
  * @route   GET /api/categories
  * @access  Public
