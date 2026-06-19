@@ -36,7 +36,7 @@ const productSchema = new Schema({
     // For offers
     offerPrice: {
         type: Number,
-        min: [0, 'Offer price cannot be negative.']
+        min: [0, 'سعر العرض لا يمكن أن يكون سالبًا.']
     },
     offerEndDate: {
         type: Date

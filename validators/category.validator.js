@@ -10,7 +10,8 @@ const createCategorySchema = Joi.object({
     parent: objectId.allow(null),
     isActive: Joi.boolean().default(true),
     color_1: Joi.string().optional().default(''),
-    color_2: Joi.string().optional().default('')
+    color_2: Joi.string().optional().default(''),
+    banner: objectId.allow(null) // الحقل الخاص بالبانر الإعلاني
 });
 
 const updateCategorySchema = Joi.object({
@@ -19,7 +20,8 @@ const updateCategorySchema = Joi.object({
     parent: objectId.allow(null),
     isActive: Joi.boolean(),
     color_1: Joi.string().optional(),
-    color_2: Joi.string().optional()
+    color_2: Joi.string().optional(),
+    banner: objectId.allow(null) // الحقل الخاص بالبانر الإعلاني
 })
     .min(1)
     .messages({ 'object.min': 'يجب إرسال حقل واحد على الأقل للتحديث' });

@@ -87,6 +87,14 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
  */
 exports.adminCreateBanner = asyncHandler(async (req, res) => {
     const banner = await Banner.create(req.body);
+    // 2. إذا كان البانر مخصصاً لقسم معين وتم إرسال رقم القسم (categoryId)
+    if (req.body.linkType === 'Category' && req.body.categoryId) {
+        // نقوم بتحديث موديل القسم ونضع فيه الـ ID الخاص بالبانر الجديد
+        await Category.findByIdAndUpdate(req.body.categoryId, {
+            banner: banner._id
+        });
+    }
+
     return ApiResponse.created(res, 'تم إنشاء اللافتة الإعلانية بنجاح', banner);
 });
 
@@ -99,6 +107,12 @@ exports.adminUpdateBanner = asyncHandler(async (req, res) => {
         new: true,
         runValidators: true
     });
+    if (req.body.linkType === 'Category' && req.body.categoryId) {
+        // نقوم بتحديث موديل القسم ونضع فيه الـ ID الخاص بالبانر الجديد
+        await Category.findByIdAndUpdate(req.body.categoryId, {
+            banner: banner._id
+        });
+    }
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
@@ -111,6 +125,12 @@ exports.adminUpdateBanner = asyncHandler(async (req, res) => {
  */
 exports.adminDeleteBanner = asyncHandler(async (req, res) => {
     const banner = await Banner.findByIdAndDelete(req.params.id);
+    if (banner.linkType === 'Category' && banner.link.length > 0) {
+        // نقوم بإزالة الـ ID الخاص بالبانر من القسم المرتبط به
+        await Category.findByIdAndUpdate(banner.link[0], {
+            banner: null
+        });
+    }
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
