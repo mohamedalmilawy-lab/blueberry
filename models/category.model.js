@@ -18,11 +18,10 @@ const categorySchema = new Schema({
         default: null
     },
     // ---- الحقل الخاص بالبانر الإعلاني ----
-    banner: {
+    banner: [{
         type: Schema.Types.ObjectId,
-        ref: 'Banner', // نربطه بموديل البانر
-        default: null
-    },
+        ref: 'Banner'
+    }],
     isActive: {
         type: Boolean,
         default: true
@@ -41,6 +40,7 @@ const categorySchema = new Schema({
 
 categorySchema.index({ name: 1 });
 categorySchema.index({ parent: 1 });
+categorySchema.index({ banner: 1 });
 
 const Category = mongoose.model('Category', categorySchema);
 

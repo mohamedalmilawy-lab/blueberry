@@ -1,30 +1,28 @@
 const Joi = require('joi');
 
+// دالة مساعدة للتحقق من الـ ObjectId
+const objectId = Joi.string().hex().length(24).message('معرف غير صالح (يجب أن يكون 24 حرفاً).');
+
 const createBannerSchema = Joi.object({
-    imageUrl: Joi.string().min(1).max(2048).trim().required(),
+    imageUrl: Joi.string().optional().messages({
+        'string.base': 'يجب أن يكون رابط الصورة نصاً.'
+    }),
     title: Joi.string().min(1).max(200).trim().required(),
-    
-    link: Joi.array().items(Joi.string().trim()).default([]).optional(),
-    
-    linkType: Joi.string().valid('Product', 'Category').default('None').optional(),
-    
-    status: Joi.string().valid('Active', 'Inactive').default('Active').optional()
+    link: Joi.array().items(objectId).default([]).optional(),
+    linkType: Joi.string().valid('Product', 'Category').required(),
+    isActive: Joi.boolean().default(true).optional()
 });
 
 const updateBannerSchema = Joi.object({
-    imageUrl: Joi.string().min(1).max(2048).trim(),
+    imageUrl: Joi.string(),
     title: Joi.string().min(1).max(200).trim(),
-    
-    link: Joi.array().items(Joi.string().trim()),
-    
+    link: Joi.array().items(objectId),
     linkType: Joi.string().valid('Product', 'Category'),
-    
-    status: Joi.string().valid('Active', 'Inactive')
+    isActive: Joi.boolean()
 })
     .min(1)
     .messages({ 
-        'object.min': 'يجب توفير حقل واحد على الأقل لتحديثه.',
-        'any.only': 'القيمة المدخلة في حقل الحالة أو النوع غير صالحة.'
+        'object.min': 'يجب توفير حقل واحد على الأقل لتحديثه.'
     });
 
 module.exports = { createBannerSchema, updateBannerSchema };

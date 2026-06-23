@@ -4,6 +4,8 @@ const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * @route   GET /api/banners
@@ -14,12 +16,12 @@ exports.listActiveBanners = asyncHandler(async (req, res) => {
     return ApiResponse.ok(res, 'تم جلب اللافتات الإعلانية بنجاح', data);
 });
 
-
-/*
- * جلب تفاصيل البنر وما يتربط به من منتجات أو فئات تلقائياً
+/**
  * @route   GET /api/banners/:id
+ * @access  Public
+ * @desc    جلب تفاصيل البنر وما يرتبط به من منتجات أو فئات تلقائياً
  */
-exports.getBanner = asyncHandler(async (req, res, next) => {
+exports.getBanner = asyncHandler(async (req, res) => {
     const banner = await Banner.findById(req.params.id);
     if (!banner || !banner.isActive) {
         throw new AppError('الإعلان غير موجود', 404);
@@ -28,12 +30,10 @@ exports.getBanner = asyncHandler(async (req, res, next) => {
     const { linkType, link } = banner; 
     let relatedData = [];
 
-    // 3. التحقق من النوع وجلب البيانات المرتبطة
-    if (linkType === 'Product' && link.length > 0) {
+    // التحقق من النوع وجلب البيانات المرتبطة
+    if (linkType === 'Product' && link && link.length > 0) {
         relatedData = await Product.find({ _id: { $in: link } });
-    } 
-    
-    else if (linkType === 'Category' && link.length > 0) {
+    } else if (linkType === 'Category' && link && link.length > 0) {
         relatedData = await Category.find({ _id: { $in: link } });
     }
 
@@ -42,7 +42,6 @@ exports.getBanner = asyncHandler(async (req, res, next) => {
         relatedData
     });
 });
-
 
 /**
  * @route   GET /api/admin/banners
@@ -66,12 +65,10 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
     const { linkType, link } = banner; 
     let relatedData = [];
 
-    // 3. التحقق من النوع وجلب البيانات المرتبطة
-    if (linkType === 'Product' && link.length > 0) {
+    // التحقق من النوع وجلب البيانات المرتبطة
+    if (linkType === 'Product' && link && link.length > 0) {
         relatedData = await Product.find({ _id: { $in: link } });
-    } 
-    
-    else if (linkType === 'Category' && link.length > 0) {
+    } else if (linkType === 'Category' && link && link.length > 0) {
         relatedData = await Category.find({ _id: { $in: link } });
     }
 
@@ -86,15 +83,26 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminCreateBanner = asyncHandler(async (req, res) => {
+    // إذا تم رفع صورة، نضيف المسار إلى req.body
+    if (req.file) {
+        req.body.imageUrl = `/uploads/${req.file.filename}`;
+    }
+
     const banner = await Banner.create(req.body);
-    // 2. إذا كان البانر مخصصاً لقسم معين وتم إرسال رقم القسم (categoryId)
-    if (req.body.linkType === 'Category' && req.body.link && req.body.link.length > 0) {
-        // نحدث كل الأقسام الموجودة في المصفوفة
-        await Promise.all(
-            req.body.link.map(categoryId =>
-                Category.findByIdAndUpdate(categoryId, { banner: banner._id })
-            )
-        );
+
+    // إضافة البانر للمصفوفة باستخدام $addToSet (لتجنب تكرار الإعلان لنفس المنتج/القسم)
+    if (banner.link && banner.link.length > 0) {
+        if (banner.linkType === 'Category') {
+            await Category.updateMany(
+                { _id: { $in: banner.link } },
+                { $addToSet: { banner: banner._id } }
+            );
+        } else if (banner.linkType === 'Product') {
+            await Product.updateMany(
+                { _id: { $in: banner.link } },
+                { $addToSet: { banner: banner._id } }
+            );
+        }
     }
 
     return ApiResponse.created(res, 'تم إنشاء اللافتة الإعلانية بنجاح', banner);
@@ -105,21 +113,55 @@ exports.adminCreateBanner = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminUpdateBanner = asyncHandler(async (req, res) => {
+    // إذا تم رفع صورة جديدة، نحذف الصورة القديمة من القرص
+    if (req.file) {
+        const oldBanner = await Banner.findById(req.params.id);
+        if (oldBanner && oldBanner.imageUrl) {
+            const oldPath = path.join(__dirname, '..', oldBanner.imageUrl);
+            fs.unlink(oldPath, (err) => {
+                if (err && err.code !== 'ENOENT') {
+                    console.error('فشل حذف الصورة القديمة:', err.message);
+                }
+            });
+        }
+        req.body.imageUrl = `/uploads/${req.file.filename}`;
+    }
+
+    // 1. إزالة هذا البانر من كل مصفوفات الفئات أو المنتجات القديمة باستخدام $pull (تنظيف البقايا)
+    await Category.updateMany(
+        { banner: req.params.id }, 
+        { $pull: { banner: req.params.id } }
+    );
+    await Product.updateMany(
+        { banner: req.params.id }, 
+        { $pull: { banner: req.params.id } }
+    );
+
+    // 2. تحديث بيانات البانر نفسه
     const banner = await Banner.findByIdAndUpdate(req.params.id, req.body, {
         new: true,
         runValidators: true
     });
+
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
-    if (req.body.linkType === 'Category' && req.body.link && req.body.link.length > 0) {
-        // نحدث كل الأقسام الموجودة في المصفوفة
-        await Promise.all(
-            req.body.link.map(categoryId =>
-                Category.findByIdAndUpdate(categoryId, { banner: banner._id })
-            )
-        );
+
+    // 3. إضافة البانر للمصفوفات الجديدة باستخدام $addToSet
+    if (banner.link && banner.link.length > 0) {
+        if (banner.linkType === 'Category') {
+            await Category.updateMany(
+                { _id: { $in: banner.link } },
+                { $addToSet: { banner: banner._id } }
+            );
+        } else if (banner.linkType === 'Product') {
+            await Product.updateMany(
+                { _id: { $in: banner.link } },
+                { $addToSet: { banner: banner._id } }
+            );
+        }
     }
+
     return ApiResponse.ok(res, 'تم تحديث اللافتة الإعلانية بنجاح', banner);
 });
 
@@ -129,16 +171,29 @@ exports.adminUpdateBanner = asyncHandler(async (req, res) => {
  */
 exports.adminDeleteBanner = asyncHandler(async (req, res) => {
     const banner = await Banner.findByIdAndDelete(req.params.id);
+    
+    
+
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
-    if (banner.linkType === 'Category' && banner.link && banner.link.length > 0) {
-        // نزيل البانر من كل الأقسام المرتبطة به
-        await Promise.all(
-            banner.link.map(categoryId =>
-                Category.findByIdAndUpdate(categoryId, { banner: null })
-            )
-        );
+
+    if (banner.imageUrl) {
+        const oldPath = path.join(__dirname, '..', banner.imageUrl);
+        fs.unlink(oldPath, (err) => {
+            if (err && err.code !== 'ENOENT') console.error('فشل حذف الصورة:', err.message);
+        });
     }
-    return ApiResponse.ok(res, 'تم حذف الإعلان');
+
+    // سحب البانر المحذوف من كافة مصفوفات الأقسام والمنتجات باستخدام $pull (التنظيف النهائي)
+    await Category.updateMany(
+        { banner: banner._id }, 
+        { $pull: { banner: banner._id } }
+    );
+    await Product.updateMany(
+        { banner: banner._id }, 
+        { $pull: { banner: banner._id } }
+    );
+
+    return ApiResponse.ok(res, 'تم حذف الإعلان بنجاح');
 });

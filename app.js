@@ -2,6 +2,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const morgan = require('morgan'); 
+const path = require('path');
 const connectDB = require("./config/db");
 const {errorHandler}=require('./middlewares/errorHandler');
 const http = require('http');
@@ -18,6 +19,9 @@ require('./models');
 // 2. Middlewares العامة (يجب أن تكون قبل الـ Routes)
 app.use(express.json());
 app.use(cors());
+
+// تقديم الملفات الثابتة (الصور المرفوعة)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev'));

@@ -1,11 +1,35 @@
 const asyncHandler = require('express-async-handler');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
+const Banner = require('../models/banner.model'); // 1. أضفنا موديل البانر للتنظيف
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const { getPaginationFromQuery } = require('../utils/pagination');
+const fs = require('fs');
+const path = require('path');
 
-const productPopulate = { path: 'category', select: 'name image isActive parent' };
+// دالة مساعدة لحذف صورة من القرص
+function deleteImageFromDisk(imagePath) {
+    if (imagePath && imagePath.startsWith('/uploads')) {
+        const fullPath = path.join(__dirname, '..', imagePath);
+        fs.unlink(fullPath, (err) => {
+            if (err && err.code !== 'ENOENT') {
+                console.error('فشل حذف الصورة:', err.message);
+            }
+        });
+    }
+}
+
+// 2. فصلنا الـ Populate للمستخدم العام والأدمن لتشمل البانر
+const publicProductPopulate = [
+    { path: 'category', select: 'name image isActive parent' },
+    { path: 'banner', match: { isActive: true }, select: 'imageUrl title linkType link isActive' }
+];
+
+const adminProductPopulate = [
+    { path: 'category', select: 'name image isActive parent' },
+    { path: 'banner', select: 'imageUrl title linkType link isActive' }
+];
 
 function buildProductFilter(query, { admin = false } = {}) {
     const filter = {};
@@ -59,7 +83,7 @@ exports.listProducts = asyncHandler(async (req, res) => {
     const sort = sortFromQuery(req.query.sort);
 
     const [items, total] = await Promise.all([
-        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(productPopulate),
+        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(publicProductPopulate), // استخدام Public Populate
         Product.countDocuments(filter)
     ]);
 
@@ -72,15 +96,11 @@ exports.listProducts = asyncHandler(async (req, res) => {
 /**
  * @route   GET /api/products/:id
  * @access  Public
- *
- * ✅ EXAMPLE — Successful GET (single resource)
- * ❌ EXAMPLE — 404 Not Found (resource does not exist)
  */
 exports.getProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id).populate(productPopulate);
+    const product = await Product.findById(req.params.id).populate(publicProductPopulate); // استخدام Public Populate
 
     if (!product || !product.isActive) {
-        // AppError is caught by the global errorHandler middleware → returns standard envelope
         throw new AppError('المنتج غير موجود', 404);
     }
 
@@ -89,7 +109,10 @@ exports.getProduct = asyncHandler(async (req, res) => {
 
 // @desc    جلب أحدث المنتجات
 exports.latest = asyncHandler(async (req, res) => {
-    const latestProducts = await Product.find().sort({ createdAt: -1 }).limit(10);
+    const latestProducts = await Product.find({ isActive: true })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate(publicProductPopulate); // يفضل إضافة populate هنا أيضاً
     return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', latestProducts);
 });
 
@@ -102,7 +125,7 @@ exports.getMostRequested = asyncHandler(async (req, res) => {
     })
         .sort({ createdAt: -1 })
         .limit(15)
-        .populate(productPopulate);
+        .populate(publicProductPopulate); // استخدام Public Populate
 
     return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', mostRequestedProducts);
 });
@@ -121,7 +144,7 @@ exports.getOfferProducts = asyncHandler(async (req, res) => {
 
     const offerProducts = await Product.find(filter)
         .sort({ offerEndDate: 1 })
-        .populate(productPopulate);
+        .populate(publicProductPopulate); // استخدام Public Populate
 
     return ApiResponse.ok(res, 'تم جلب منتجات العروض بنجاح', offerProducts);
 });
@@ -131,7 +154,7 @@ exports.getOfferProducts = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminGetProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id).populate(productPopulate);
+    const product = await Product.findById(req.params.id).populate(adminProductPopulate); // استخدام Admin Populate
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
     }
@@ -148,7 +171,7 @@ exports.adminListProducts = asyncHandler(async (req, res) => {
     const sort = sortFromQuery(req.query.sort);
 
     const [items, total] = await Promise.all([
-        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(productPopulate),
+        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(adminProductPopulate), // استخدام Admin Populate
         Product.countDocuments(filter)
     ]);
 
@@ -161,9 +184,6 @@ exports.adminListProducts = asyncHandler(async (req, res) => {
 /**
  * @route   POST /api/admin/products
  * @access  Private / أدمن
- *
- * ✅ EXAMPLE — Successful POST (resource creation → 201 Created)
- * ❌ EXAMPLE — 400 Bad Request (invalid reference)
  */
 exports.adminCreateProduct = asyncHandler(async (req, res) => {
     const category = await Category.findById(req.body.category);
@@ -171,8 +191,34 @@ exports.adminCreateProduct = asyncHandler(async (req, res) => {
         throw new AppError('التصنيف غير موجود', 400);
     }
 
-    const product = await Product.create(req.body);
-    const populated = await Product.findById(product._id).populate(productPopulate);
+    // جمع الصور: الصور الموجودة في req.body.images مع الصور المرفوعة (req.files)
+    let images = [];
+    
+    // إضافة الصور الموجودة في الـ body (إذا كانت موجودة)
+    if (req.body.images) {
+        if (Array.isArray(req.body.images)) {
+            images = [...req.body.images];
+        } else {
+            images = [req.body.images];
+        }
+    }
+
+    // إضافة الصور المرفوعة من multer
+    if (req.files && req.files.length > 0) {
+        const uploadedImages = req.files.map(file => `/uploads/${file.filename}`);
+        images = [...images, ...uploadedImages];
+    }
+
+    // التأكد من أن هناك على الأقل صورة واحدة
+    if (images.length === 0) {
+        throw new AppError('يجب إضافة على الأقل صورة واحدة للمنتج', 400);
+    }
+
+    const product = await Product.create({
+        ...req.body,
+        images
+    });
+    const populated = await Product.findById(product._id).populate(adminProductPopulate); // استخدام Admin Populate
 
     return ApiResponse.created(res, 'تم إنشاء المنتج بنجاح', populated);
 });
@@ -189,14 +235,64 @@ exports.adminUpdateProduct = asyncHandler(async (req, res) => {
         }
     }
 
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-        new: true,
-        runValidators: true
-    }).populate(productPopulate);
-
-    if (!product) {
+    // جلب المنتج القديم أولاً
+    const oldProduct = await Product.findById(req.params.id);
+    if (!oldProduct) {
         throw new AppError('المنتج غير موجود', 404);
     }
+
+    // معالجة الصور
+    let newImages = [...oldProduct.images]; // البداية بالصور القديمة
+    const imagesToKeep = req.body.imagesToKeep; // مصفوفة من مسارات الصور التي نريد الاحتفاظ بها
+
+    // إذا أرسل الأدمن قائمة الصور التي يريد الاحتفاظ بها:
+    if (imagesToKeep) {
+        const keepSet = new Set(Array.isArray(imagesToKeep) ? imagesToKeep : [imagesToKeep]);
+        
+        // حذف الصور القديمة التي ليست في قائمة الحفظ من القرص
+        oldProduct.images.forEach((img) => {
+            if (!keepSet.has(img)) {
+                deleteImageFromDisk(img);
+            }
+        });
+        
+        // تحديث المصفوفة لتكون فقط الصور المطلوبة
+        newImages = oldProduct.images.filter((img) => keepSet.has(img));
+    }
+
+    // إضافة الصور الجديدة المرفوعة (req.files)
+    if (req.files && req.files.length > 0) {
+        const uploadedImages = req.files.map(file => `/uploads/${file.filename}`);
+        newImages = [...newImages, ...uploadedImages];
+    }
+
+    // إضافة الصور الموجودة في req.body.images (إذا كانت موجودة)
+    if (req.body.images) {
+        const bodyImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
+        // دمج مع الصور الجديدة، التأكد من عدم تكرار نفس الصورة
+        bodyImages.forEach((img) => {
+            if (!newImages.includes(img)) {
+                newImages.push(img);
+            }
+        });
+    }
+
+    // التأكد من أن هناك على الأقل صورة واحدة
+    if (newImages.length === 0) {
+        throw new AppError('لا يمكن حذف جميع صور المنتج، يجب أن يبقى على الأقل صورة واحدة', 400);
+    }
+
+    // إعداد البيانات للتحديث
+    const updateData = {
+        ...req.body,
+        images: newImages
+    };
+    delete updateData.imagesToKeep; // حذف هذا الحقل لأنه ليس جزءاً من الموديل
+
+    const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
+        new: true,
+        runValidators: true
+    }).populate(adminProductPopulate); // استخدام Admin Populate
 
     return ApiResponse.ok(res, 'تم تحديث المنتج بنجاح', product);
 });
@@ -210,7 +306,7 @@ exports.adminToggleFeatured = asyncHandler(async (req, res) => {
         req.params.id,
         { isMostRequested: req.body.isMostRequested },
         { new: true, runValidators: true }
-    ).populate(productPopulate);
+    ).populate(adminProductPopulate); // استخدام Admin Populate
 
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
@@ -228,5 +324,19 @@ exports.adminDeleteProduct = asyncHandler(async (req, res) => {
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
     }
+
+    // حذف جميع الصور من القرص
+    if (product.images && product.images.length > 0) {
+        product.images.forEach((img) => {
+            deleteImageFromDisk(img);
+        });
+    }
+
+    // 3. التنظيف: إزالة هذا المنتج من أي بانرات إعلانية كانت تشير إليه
+    await Banner.updateMany(
+        { link: req.params.id, linkType: 'Product' },
+        { $pull: { link: req.params.id } }
+    );
+
     return ApiResponse.ok(res, 'تم حذف المنتج بنجاح', null);
 });

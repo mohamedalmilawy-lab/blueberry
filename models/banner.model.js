@@ -31,7 +31,7 @@ const bannerSchema = new Schema(
     { timestamps: true }
 );
 
-bannerSchema.index({ status: 1, createdAt: -1 });
+bannerSchema.index({ isActive: 1, createdAt: -1 });
 
 const Banner = mongoose.model('Banner', bannerSchema);
 

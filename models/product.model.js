@@ -25,6 +25,10 @@ const productSchema = new Schema({
         ref: 'Category',
         required: true
     },
+    banner: [{
+        type: Schema.Types.ObjectId,
+        ref: 'Banner'
+    }],
     isActive: {
         type: Boolean,
         default: true
@@ -48,6 +52,7 @@ const productSchema = new Schema({
 productSchema.index({ name: 'text', details: 'text' });
 productSchema.index({ category: 1, isActive: 1, price: 1 });
 productSchema.index({ isMostRequested: 1, isActive: 1 });
+productSchema.index({ banner: 1 }); 
 
 const Product = mongoose.model('Product', productSchema);
 

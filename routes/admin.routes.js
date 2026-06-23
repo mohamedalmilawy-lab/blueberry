@@ -4,6 +4,7 @@ const auth = require('../middlewares/auth');
 const { restrictTo } = require('../middlewares/role');
 const validate = require('../middlewares/validate');
 const validateQuery = require('../middlewares/validateQuery');
+const { upload, handleMulterError } = require('../middlewares/upload.middleware');
 
 const adminController = require('../controllers/admin.controller');
 const categoryController = require('../controllers/category.controller');
@@ -42,8 +43,8 @@ router.post('/push/broadcast', validate(broadcastPushSchema), adminController.br
 
 router.get('/banners', bannerController.adminListBanners);
 router.get('/banners/:id', bannerController.adminGetBanner);
-router.post('/banners', validate(createBannerSchema), bannerController.adminCreateBanner);
-router.patch('/banners/:id', validate(updateBannerSchema), bannerController.adminUpdateBanner);
+router.post('/banners', upload.single('image'), handleMulterError, validate(createBannerSchema), bannerController.adminCreateBanner);
+router.patch('/banners/:id', upload.single('image'), handleMulterError, validate(updateBannerSchema), bannerController.adminUpdateBanner);
 router.delete('/banners/:id', bannerController.adminDeleteBanner);
 
 router.get('/users', validateQuery(listAdminUsersQuerySchema), adminController.listUsers);
@@ -54,14 +55,14 @@ router.delete('/users/:id', adminController.deleteUser);
 
 router.get('/categories', categoryController.adminListCategories);
 router.get('/categories/:id', categoryController.adminGetCategory);
-router.post('/categories', validate(createCategorySchema), categoryController.adminCreateCategory);
-router.patch('/categories/:id', validate(updateCategorySchema), categoryController.adminUpdateCategory);
+router.post('/categories', upload.single('image'), handleMulterError, validate(createCategorySchema), categoryController.adminCreateCategory);
+router.patch('/categories/:id', upload.single('image'), handleMulterError, validate(updateCategorySchema), categoryController.adminUpdateCategory);
 router.delete('/categories/:id', categoryController.adminDeleteCategory);
 
 router.get('/products', validateQuery(adminProductsQuery), productController.adminListProducts);
 router.get('/products/:id', productController.adminGetProduct);
-router.post('/products', validate(createProductSchema), productController.adminCreateProduct);
-router.patch('/products/:id', validate(updateProductSchema), productController.adminUpdateProduct);
+router.post('/products', upload.array('images', 10), handleMulterError, validate(createProductSchema), productController.adminCreateProduct);
+router.patch('/products/:id', upload.array('images', 10), handleMulterError, validate(updateProductSchema), productController.adminUpdateProduct);
 router.patch('/products/:id/featured', validate(toggleFeaturedSchema), productController.adminToggleFeatured);
 router.delete('/products/:id', productController.adminDeleteProduct);
 

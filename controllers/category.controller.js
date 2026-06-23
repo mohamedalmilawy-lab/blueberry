@@ -1,13 +1,28 @@
 const asyncHandler = require('express-async-handler');
 const Category = require('../models/category.model');
 const Product = require('../models/product.model');
+const Banner = require('../models/banner.model'); // أضفنا موديل البانر هنا
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
+const fs = require('fs');
+const path = require('path');
 
-const categoryPopulate = [
+// 1. إعداد الـ Populate الخاص بالمستخدم العادي (يجلب البانرات والأقسام النشطة فقط)
+const publicCategoryPopulate = [
     { path: 'parent', select: 'name image isActive' },
-    { path: 'banner', select: 'imageUrl title linkType link isActive' } //  هذا هو السطر  الخاص بالبانر
+    { 
+        path: 'banner', 
+        match: { isActive: true }, // السر هنا: جلب الإعلانات المفعلة فقط
+        select: 'imageUrl title linkType link isActive' 
+    } 
 ];
+
+// 2. إعداد الـ Populate الخاص بالأدمن (يجلب كل شيء ليتمكن من الإدارة)
+const adminCategoryPopulate = [
+    { path: 'parent', select: 'name image isActive' },
+    { path: 'banner', select: 'imageUrl title linkType link isActive' } 
+];
+
 /**
  * @route   GET /api/categories
  * @access  Public
@@ -19,7 +34,8 @@ exports.listCategories = asyncHandler(async (req, res) => {
         filter.name = { $regex: req.query.search, $options: 'i' };
     }
 
-    const categories = await Category.find(filter).sort({ name: 1 }).populate(categoryPopulate);
+    // استخدمنا publicCategoryPopulate
+    const categories = await Category.find(filter).sort({ name: 1 }).populate(publicCategoryPopulate);
     return ApiResponse.ok(res, 'تم جلب الأقسام بنجاح', categories);
 });
 
@@ -28,7 +44,8 @@ exports.listCategories = asyncHandler(async (req, res) => {
  * @access  Public
  */
 exports.getCategory = asyncHandler(async (req, res) => {
-    const category = await Category.findById(req.params.id).populate(categoryPopulate);
+    // استخدمنا publicCategoryPopulate
+    const category = await Category.findById(req.params.id).populate(publicCategoryPopulate);
     if (!category || !category.isActive) {
         throw new AppError('التصنيف غير موجود', 404);
     }
@@ -43,7 +60,8 @@ exports.getCategory = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminGetCategory = asyncHandler(async (req, res) => {
-    const category = await Category.findById(req.params.id).populate(categoryPopulate);
+    // استخدمنا adminCategoryPopulate
+    const category = await Category.findById(req.params.id).populate(adminCategoryPopulate);
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
     }
@@ -63,7 +81,8 @@ exports.adminListCategories = asyncHandler(async (req, res) => {
         filter.name = { $regex: req.query.search, $options: 'i' };
     }
 
-    const categories = await Category.find(filter).sort({ createdAt: -1 }).populate(categoryPopulate);
+    // استخدمنا adminCategoryPopulate
+    const categories = await Category.find(filter).sort({ createdAt: -1 }).populate(adminCategoryPopulate);
     return ApiResponse.ok(res, 'تم جلب الأقسام بنجاح', categories);
 });
 
@@ -72,6 +91,11 @@ exports.adminListCategories = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminCreateCategory = asyncHandler(async (req, res) => {
+    // إذا تم رفع صورة، نضيف المسار إلى req.body
+    if (req.file) {
+        req.body.image = `/uploads/${req.file.filename}`;
+    }
+
     const category = await Category.create(req.body);
     return ApiResponse.created(res, 'تم إنشاء القسم بنجاح', category);
 });
@@ -81,10 +105,24 @@ exports.adminCreateCategory = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminUpdateCategory = asyncHandler(async (req, res) => {
+    // إذا تم رفع صورة جديدة، نحذف الصورة القديمة من القرص
+    if (req.file) {
+        const oldCategory = await Category.findById(req.params.id);
+        if (oldCategory && oldCategory.image) {
+            const oldPath = path.join(__dirname, '..', oldCategory.image);
+            fs.unlink(oldPath, (err) => {
+                if (err && err.code !== 'ENOENT') {
+                    console.error('فشل حذف الصورة القديمة:', err.message);
+                }
+            });
+        }
+        req.body.image = `/uploads/${req.file.filename}`;
+    }
+
     const category = await Category.findByIdAndUpdate(req.params.id, req.body, {
         new: true,
         runValidators: true
-    }).populate(categoryPopulate);
+    }).populate(adminCategoryPopulate);
 
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
@@ -99,12 +137,27 @@ exports.adminUpdateCategory = asyncHandler(async (req, res) => {
  */
 exports.adminDeleteCategory = asyncHandler(async (req, res) => {
     const productsCount = await Product.countDocuments({ category: req.params.id });
+    
     if (productsCount > 0) {
         throw new AppError('لا يمكن حذف تصنيف مرتبط بمنتجات. قم بإعادة تعيين المنتجات أولاً.', 400);
     }
+    
     const category = await Category.findByIdAndDelete(req.params.id);
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    return ApiResponse.ok(res, 'تم حذف التصنيف');
+    if (category.image) {
+        const oldPath = path.join(__dirname, '..', category.image);
+        fs.unlink(oldPath, (err) => {
+            if (err && err.code !== 'ENOENT') console.error('فشل حذف الصورة:', err.message);
+        });
+    }
+
+    // التنظيف: إزالة هذا القسم من أي بانرات كانت تشير إليه
+    await Banner.updateMany(
+        { link: req.params.id, linkType: 'Category' },
+        { $pull: { link: req.params.id } }
+    );
+
+    return ApiResponse.ok(res, 'تم حذف التصنيف بنجاح');
 });

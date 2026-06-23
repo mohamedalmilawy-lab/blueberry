@@ -6,7 +6,7 @@ const objectId = Joi.string().hex().length(24).messages({
 
 const createCategorySchema = Joi.object({
     name: Joi.string().min(2).max(80).trim().required(),
-    image: Joi.string().trim().min(1).required(),
+    image: Joi.string().trim().min(1).optional(),
     parent: objectId.allow(null),
     isActive: Joi.boolean().default(true),
     color_1: Joi.string().optional().default(''),
