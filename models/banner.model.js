@@ -5,7 +5,6 @@ const bannerSchema = new Schema(
     {
         imageUrl: {
             type: String,
-            required: true,
             trim: true
         },
         title: {
@@ -15,12 +14,11 @@ const bannerSchema = new Schema(
         },
         linkType: {
             type: String,
-            enum: ['Product', 'Category'], // تحديد النوع
-            default: 'Product'
+            enum: ['Product', 'Category','Non'], // تحديد النوع
+            default: 'Non'
         },        
         link: [{
             type: Schema.Types.ObjectId,
-            required: true,
             refPath: 'linkType'
         }],
         isActive: {

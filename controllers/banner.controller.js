@@ -4,8 +4,20 @@ const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
-const fs = require('fs');
-const path = require('path');
+const { deleteFromCloudinary } = require('../config/cloudinary');
+
+/**
+ * تطبيع حقل link القادم من FormData:
+ * - إذا كان string واحد → نحوّله لمصفوفة
+ * - إذا كان مصفوفة → نتركه كما هو
+ * - إذا كان undefined/null أو linkType = 'Non' → مصفوفة فارغة
+ */
+function normalizeLink(link, linkType) {
+    if (linkType === 'Non') return [];
+    if (!link) return [];
+    if (Array.isArray(link)) return link;
+    return [link]; // FormData يُرسل عنصراً واحداً كـ string
+}
 
 /**
  * @route   GET /api/banners
@@ -27,7 +39,7 @@ exports.getBanner = asyncHandler(async (req, res) => {
         throw new AppError('الإعلان غير موجود', 404);
     }
 
-    const { linkType, link } = banner; 
+    const { linkType, link } = banner;
     let relatedData = [];
 
     // التحقق من النوع وجلب البيانات المرتبطة
@@ -62,7 +74,7 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
         throw new AppError('الإعلان غير موجود', 404);
     }
 
-    const { linkType, link } = banner; 
+    const { linkType, link } = banner;
     let relatedData = [];
 
     // التحقق من النوع وجلب البيانات المرتبطة
@@ -83,10 +95,13 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminCreateBanner = asyncHandler(async (req, res) => {
-    // إذا تم رفع صورة، نضيف المسار إلى req.body
+    // Cloudinary يُعيد الـ URL الآمن عبر req.file.path
     if (req.file) {
-        req.body.imageUrl = `/uploads/${req.file.filename}`;
+        req.body.imageUrl = req.file.path;
     }
+
+    // تطبيع link: إفراغها عند Non أو تحويل النص لمصفوفة عند FormData
+    req.body.link = normalizeLink(req.body.link, req.body.linkType);
 
     const banner = await Banner.create(req.body);
 
@@ -113,27 +128,29 @@ exports.adminCreateBanner = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminUpdateBanner = asyncHandler(async (req, res) => {
-    // إذا تم رفع صورة جديدة، نحذف الصورة القديمة من القرص
+    // إذا تم رفع صورة جديدة، نحذف الصورة القديمة من Cloudinary
     if (req.file) {
         const oldBanner = await Banner.findById(req.params.id);
-        if (oldBanner && oldBanner.imageUrl) {
-            const oldPath = path.join(__dirname, '..', oldBanner.imageUrl);
-            fs.unlink(oldPath, (err) => {
-                if (err && err.code !== 'ENOENT') {
-                    console.error('فشل حذف الصورة القديمة:', err.message);
-                }
-            });
+        if (oldBanner?.imageUrl) {
+            await deleteFromCloudinary(oldBanner.imageUrl);
         }
-        req.body.imageUrl = `/uploads/${req.file.filename}`;
+        req.body.imageUrl = req.file.path;
+    }
+
+    // تطبيع link بناءً على linkType المُرسَل (أو الحالي إذا لم يُرسَل)
+    // نقرأ linkType من الطلب الحالي إذا أُرسل، وإلا نعتمد على قيمة البانر الحالي
+    if (req.body.linkType !== undefined || req.body.link !== undefined) {
+        const effectiveLinkType = req.body.linkType;
+        req.body.link = normalizeLink(req.body.link, effectiveLinkType);
     }
 
     // 1. إزالة هذا البانر من كل مصفوفات الفئات أو المنتجات القديمة باستخدام $pull (تنظيف البقايا)
     await Category.updateMany(
-        { banner: req.params.id }, 
+        { banner: req.params.id },
         { $pull: { banner: req.params.id } }
     );
     await Product.updateMany(
-        { banner: req.params.id }, 
+        { banner: req.params.id },
         { $pull: { banner: req.params.id } }
     );
 
@@ -171,27 +188,23 @@ exports.adminUpdateBanner = asyncHandler(async (req, res) => {
  */
 exports.adminDeleteBanner = asyncHandler(async (req, res) => {
     const banner = await Banner.findByIdAndDelete(req.params.id);
-    
-    
 
     if (!banner) {
         throw new AppError('الإعلان غير موجود', 404);
     }
 
+    // حذف الصورة من Cloudinary
     if (banner.imageUrl) {
-        const oldPath = path.join(__dirname, '..', banner.imageUrl);
-        fs.unlink(oldPath, (err) => {
-            if (err && err.code !== 'ENOENT') console.error('فشل حذف الصورة:', err.message);
-        });
+        await deleteFromCloudinary(banner.imageUrl);
     }
 
     // سحب البانر المحذوف من كافة مصفوفات الأقسام والمنتجات باستخدام $pull (التنظيف النهائي)
     await Category.updateMany(
-        { banner: banner._id }, 
+        { banner: banner._id },
         { $pull: { banner: banner._id } }
     );
     await Product.updateMany(
-        { banner: banner._id }, 
+        { banner: banner._id },
         { $pull: { banner: banner._id } }
     );
 

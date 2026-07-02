@@ -1,26 +1,20 @@
 const asyncHandler = require('express-async-handler');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
-const Banner = require('../models/banner.model'); // 1. أضفنا موديل البانر للتنظيف
+const Banner = require('../models/banner.model');
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const { getPaginationFromQuery } = require('../utils/pagination');
-const fs = require('fs');
-const path = require('path');
+const { deleteFromCloudinary } = require('../config/cloudinary');
 
-// دالة مساعدة لحذف صورة من القرص
-function deleteImageFromDisk(imagePath) {
-    if (imagePath && imagePath.startsWith('/uploads')) {
-        const fullPath = path.join(__dirname, '..', imagePath);
-        fs.unlink(fullPath, (err) => {
-            if (err && err.code !== 'ENOENT') {
-                console.error('فشل حذف الصورة:', err.message);
-            }
-        });
+// دالة مساعدة لحذف صورة من Cloudinary
+async function deleteProductImage(imageUrl) {
+    if (imageUrl) {
+        await deleteFromCloudinary(imageUrl);
     }
 }
 
-// 2. فصلنا الـ Populate للمستخدم العام والأدمن لتشمل البانر
+// فصلنا الـ Populate للمستخدم العام والأدمن لتشمل البانر
 const publicProductPopulate = [
     { path: 'category', select: 'name image isActive parent' },
     { path: 'banner', match: { isActive: true }, select: 'imageUrl title linkType link isActive' }
@@ -83,7 +77,7 @@ exports.listProducts = asyncHandler(async (req, res) => {
     const sort = sortFromQuery(req.query.sort);
 
     const [items, total] = await Promise.all([
-        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(publicProductPopulate), // استخدام Public Populate
+        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(publicProductPopulate),
         Product.countDocuments(filter)
     ]);
 
@@ -98,7 +92,7 @@ exports.listProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 exports.getProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id).populate(publicProductPopulate); // استخدام Public Populate
+    const product = await Product.findById(req.params.id).populate(publicProductPopulate);
 
     if (!product || !product.isActive) {
         throw new AppError('المنتج غير موجود', 404);
@@ -112,7 +106,7 @@ exports.latest = asyncHandler(async (req, res) => {
     const latestProducts = await Product.find({ isActive: true })
         .sort({ createdAt: -1 })
         .limit(10)
-        .populate(publicProductPopulate); // يفضل إضافة populate هنا أيضاً
+        .populate(publicProductPopulate);
     return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', latestProducts);
 });
 
@@ -125,7 +119,7 @@ exports.getMostRequested = asyncHandler(async (req, res) => {
     })
         .sort({ createdAt: -1 })
         .limit(15)
-        .populate(publicProductPopulate); // استخدام Public Populate
+        .populate(publicProductPopulate);
 
     return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', mostRequestedProducts);
 });
@@ -144,7 +138,7 @@ exports.getOfferProducts = asyncHandler(async (req, res) => {
 
     const offerProducts = await Product.find(filter)
         .sort({ offerEndDate: 1 })
-        .populate(publicProductPopulate); // استخدام Public Populate
+        .populate(publicProductPopulate);
 
     return ApiResponse.ok(res, 'تم جلب منتجات العروض بنجاح', offerProducts);
 });
@@ -154,7 +148,7 @@ exports.getOfferProducts = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminGetProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id).populate(adminProductPopulate); // استخدام Admin Populate
+    const product = await Product.findById(req.params.id).populate(adminProductPopulate);
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
     }
@@ -171,7 +165,7 @@ exports.adminListProducts = asyncHandler(async (req, res) => {
     const sort = sortFromQuery(req.query.sort);
 
     const [items, total] = await Promise.all([
-        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(adminProductPopulate), // استخدام Admin Populate
+        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(adminProductPopulate),
         Product.countDocuments(filter)
     ]);
 
@@ -193,7 +187,7 @@ exports.adminCreateProduct = asyncHandler(async (req, res) => {
 
     // جمع الصور: الصور الموجودة في req.body.images مع الصور المرفوعة (req.files)
     let images = [];
-    
+
     // إضافة الصور الموجودة في الـ body (إذا كانت موجودة)
     if (req.body.images) {
         if (Array.isArray(req.body.images)) {
@@ -203,9 +197,9 @@ exports.adminCreateProduct = asyncHandler(async (req, res) => {
         }
     }
 
-    // إضافة الصور المرفوعة من multer
+    // إضافة الصور المرفوعة من multer — Cloudinary يُعيد الـ URL عبر file.path
     if (req.files && req.files.length > 0) {
-        const uploadedImages = req.files.map(file => `/uploads/${file.filename}`);
+        const uploadedImages = req.files.map(file => file.path);
         images = [...images, ...uploadedImages];
     }
 
@@ -218,7 +212,7 @@ exports.adminCreateProduct = asyncHandler(async (req, res) => {
         ...req.body,
         images
     });
-    const populated = await Product.findById(product._id).populate(adminProductPopulate); // استخدام Admin Populate
+    const populated = await Product.findById(product._id).populate(adminProductPopulate);
 
     return ApiResponse.created(res, 'تم إنشاء المنتج بنجاح', populated);
 });
@@ -248,21 +242,20 @@ exports.adminUpdateProduct = asyncHandler(async (req, res) => {
     // إذا أرسل الأدمن قائمة الصور التي يريد الاحتفاظ بها:
     if (imagesToKeep) {
         const keepSet = new Set(Array.isArray(imagesToKeep) ? imagesToKeep : [imagesToKeep]);
-        
-        // حذف الصور القديمة التي ليست في قائمة الحفظ من القرص
-        oldProduct.images.forEach((img) => {
-            if (!keepSet.has(img)) {
-                deleteImageFromDisk(img);
-            }
-        });
-        
+
+        // حذف الصور القديمة التي ليست في قائمة الحفظ من Cloudinary
+        const deletePromises = oldProduct.images
+            .filter(img => !keepSet.has(img))
+            .map(img => deleteProductImage(img));
+        await Promise.all(deletePromises);
+
         // تحديث المصفوفة لتكون فقط الصور المطلوبة
-        newImages = oldProduct.images.filter((img) => keepSet.has(img));
+        newImages = oldProduct.images.filter(img => keepSet.has(img));
     }
 
-    // إضافة الصور الجديدة المرفوعة (req.files)
+    // إضافة الصور الجديدة المرفوعة (req.files) — Cloudinary يُعيد الـ URL عبر file.path
     if (req.files && req.files.length > 0) {
-        const uploadedImages = req.files.map(file => `/uploads/${file.filename}`);
+        const uploadedImages = req.files.map(file => file.path);
         newImages = [...newImages, ...uploadedImages];
     }
 
@@ -270,7 +263,7 @@ exports.adminUpdateProduct = asyncHandler(async (req, res) => {
     if (req.body.images) {
         const bodyImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
         // دمج مع الصور الجديدة، التأكد من عدم تكرار نفس الصورة
-        bodyImages.forEach((img) => {
+        bodyImages.forEach(img => {
             if (!newImages.includes(img)) {
                 newImages.push(img);
             }
@@ -292,7 +285,7 @@ exports.adminUpdateProduct = asyncHandler(async (req, res) => {
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
         new: true,
         runValidators: true
-    }).populate(adminProductPopulate); // استخدام Admin Populate
+    }).populate(adminProductPopulate);
 
     return ApiResponse.ok(res, 'تم تحديث المنتج بنجاح', product);
 });
@@ -306,7 +299,7 @@ exports.adminToggleFeatured = asyncHandler(async (req, res) => {
         req.params.id,
         { isMostRequested: req.body.isMostRequested },
         { new: true, runValidators: true }
-    ).populate(adminProductPopulate); // استخدام Admin Populate
+    ).populate(adminProductPopulate);
 
     if (!product) {
         throw new AppError('المنتج غير موجود', 404);
@@ -325,14 +318,12 @@ exports.adminDeleteProduct = asyncHandler(async (req, res) => {
         throw new AppError('المنتج غير موجود', 404);
     }
 
-    // حذف جميع الصور من القرص
+    // حذف جميع الصور من Cloudinary
     if (product.images && product.images.length > 0) {
-        product.images.forEach((img) => {
-            deleteImageFromDisk(img);
-        });
+        await Promise.all(product.images.map(img => deleteProductImage(img)));
     }
 
-    // 3. التنظيف: إزالة هذا المنتج من أي بانرات إعلانية كانت تشير إليه
+    // التنظيف: إزالة هذا المنتج من أي بانرات إعلانية كانت تشير إليه
     await Banner.updateMany(
         { link: req.params.id, linkType: 'Product' },
         { $pull: { link: req.params.id } }
