@@ -14,7 +14,7 @@ module.exports = async function optionalAuth(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, getJwtSecret());
-        const user = await User.findById(decoded.id).select('tokenVersion role');
+        const user = await User.findById(decoded.id).select('tokenVersion role cart favorites');
         //اذا لم يجد المستخدم يدخل كزائر
         if (!user) {
             return next();
@@ -30,7 +30,9 @@ module.exports = async function optionalAuth(req, res, next) {
         req.user = {
             id: user._id.toString(),
             role: user.role,
-            tokenVersion: versionInDb
+            tokenVersion: versionInDb,
+            cart: user.cart || [],
+            favorites: user.favorites || []
         };
     } catch {
         //إذا كان التوكن منتهياً أو خاطئاً (Garbage)، سيقوم الـ catch بمسك الخطأ، لكنه لن يفعل شيئاً (لن يرسل خطأ للمستخدم).

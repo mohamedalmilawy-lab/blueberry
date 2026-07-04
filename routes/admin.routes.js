@@ -60,6 +60,7 @@ router.patch('/categories/:id', uploadCategory.single('image'), handleMulterErro
 router.delete('/categories/:id', categoryController.adminDeleteCategory);
 
 router.get('/products', validateQuery(adminProductsQuery), productController.adminListProducts);
+router.get('/products/notes', productController.adminGetAllNotes);   //  ملاحظات الزبائن
 router.get('/products/:id', productController.adminGetProduct);
 router.post('/products', uploadProduct.array('images', 10), handleMulterError, validate(createProductSchema), productController.adminCreateProduct);
 router.patch('/products/:id', uploadProduct.array('images', 10), handleMulterError, validate(updateProductSchema), productController.adminUpdateProduct);

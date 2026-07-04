@@ -23,7 +23,7 @@ const userSchema = new Schema({
     },
     role: {
         type: String,
-        enum: ['زبون','مشرف', 'أدمن', 'موظف توصيل'],
+        enum: ['زبون', 'مشرف', 'أدمن', 'موظف توصيل'],
         default: 'زبون'
     },
     phone: {
@@ -47,7 +47,8 @@ const userSchema = new Schema({
     favorites: [{
         type: Schema.Types.ObjectId,
         ref: 'Product'
-    }],
+    }],    
+    
     cart: [{
         product: {
             type: Schema.Types.ObjectId,
@@ -78,8 +79,8 @@ const userSchema = new Schema({
 
 // Hash password before saving the user
 userSchema.pre('save', async function (next) {
-    if (!this.isModified('password')) 
-        return ;
+    if (!this.isModified('password'))
+        return;
 
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);

@@ -13,7 +13,7 @@ module.exports = async function auth(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, getJwtSecret());
-        const user = await User.findById(decoded.id).select('tokenVersion role');
+        const user = await User.findById(decoded.id).select('tokenVersion role cart favorites');
 
         if (!user) {
             return res.status(401).json({ message: 'المستخدم لم يعد موجودًا.' });
@@ -28,7 +28,9 @@ module.exports = async function auth(req, res, next) {
         req.user = {
             id: user._id.toString(),
             role: user.role,
-            tokenVersion: versionInDb
+            tokenVersion: versionInDb,
+            cart: user.cart || [],
+            favorites: user.favorites || []
         };
         next();
     } catch (ex) {

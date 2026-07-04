@@ -68,8 +68,41 @@ function sortFromQuery(sortKey) {
 }
 
 /**
+ * حقن حقلي inCart و inFavorites ديناميكياً على منتج واحد.
+ * لا يُحفظ في قاعدة البيانات — يُحسب لحظة الاستجابة فقط.
+ *
+ * @param {object} productDoc - مستند Mongoose أو كائن عادي
+ * @param {object|null} user  - req.user (أو null إذا كان الزائر غير مسجل)
+ * @returns {object} كائن عادي (plain object) يحتوي على inCart و inFavorites
+ */
+function injectCartFavoritesStatus(productDoc, user) {
+    // تحويل مستند Mongoose إلى كائن JS عادي قابل للتعديل
+    const product = productDoc.toObject ? productDoc.toObject() : { ...productDoc };
+
+    if (!user) {
+        product.inCart = false;
+        product.inFavorites = false;
+        return product;
+    }
+
+    const productId = product._id.toString();
+
+    // cart هي مصفوفة من { product: ObjectId, quantity: Number }
+    product.inCart = (user.cart || []).some(
+        (item) => item.product?.toString() === productId
+    );
+
+    // favorites هي مصفوفة من ObjectId مباشرةً
+    product.inFavorites = (user.favorites || []).some(
+        (favId) => favId.toString() === productId
+    );
+
+    return product;
+}
+
+/**
  * @route   GET /api/products
- * @access  Public
+ * @access  Public (optionalAuth)
  */
 exports.listProducts = asyncHandler(async (req, res) => {
     const { page, limit, skip } = getPaginationFromQuery(req.query);
@@ -77,37 +110,53 @@ exports.listProducts = asyncHandler(async (req, res) => {
     const sort = sortFromQuery(req.query.sort);
 
     const [items, total] = await Promise.all([
-        Product.find(filter).sort(sort).skip(skip).limit(limit).populate(publicProductPopulate),
+        Product.find(filter)
+            .select('-customerNotes')   // الخصوصية: حقل الملاحظات للأدمن فقط
+            .sort(sort)
+            .skip(skip)
+            .limit(limit)
+            .populate(publicProductPopulate),
         Product.countDocuments(filter)
     ]);
 
+    // حقن inCart و inFavorites لكل منتج
+    const enrichedItems = items.map((p) => injectCartFavoritesStatus(p, req.user));
+
     return ApiResponse.ok(res, 'تم جلب المنتجات بنجاح', {
-        items,
+        items: enrichedItems,
         meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
     });
 });
 
 /**
  * @route   GET /api/products/:id
- * @access  Public
+ * @access  Public (optionalAuth)
  */
 exports.getProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id).populate(publicProductPopulate);
+    const product = await Product.findById(req.params.id)
+        .select('-customerNotes')       // الخصوصية: حقل الملاحظات للأدمن فقط
+        .populate(publicProductPopulate);
 
     if (!product || !product.isActive) {
         throw new AppError('المنتج غير موجود', 404);
     }
 
-    return ApiResponse.ok(res, 'تم جلب المنتج بنجاح', product);
+    const enriched = injectCartFavoritesStatus(product, req.user);
+
+    return ApiResponse.ok(res, 'تم جلب المنتج بنجاح', enriched);
 });
 
 // @desc    جلب أحدث المنتجات
 exports.latest = asyncHandler(async (req, res) => {
     const latestProducts = await Product.find({ isActive: true })
+        .select('-customerNotes')
         .sort({ createdAt: -1 })
         .limit(10)
         .populate(publicProductPopulate);
-    return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', latestProducts);
+
+    const enrichedItems = latestProducts.map((p) => injectCartFavoritesStatus(p, req.user));
+
+    return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', enrichedItems);
 });
 
 // @desc    جلب المنتجات الأكثر طلبًا
@@ -117,11 +166,14 @@ exports.getMostRequested = asyncHandler(async (req, res) => {
         isMostRequested: true,
         isActive: true
     })
+        .select('-customerNotes')
         .sort({ createdAt: -1 })
         .limit(15)
         .populate(publicProductPopulate);
 
-    return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', mostRequestedProducts);
+    const enrichedItems = mostRequestedProducts.map((p) => injectCartFavoritesStatus(p, req.user));
+
+    return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', enrichedItems);
 });
 
 // @desc    جلب جميع المنتجات التي عليها عروض سارية
@@ -137,11 +189,91 @@ exports.getOfferProducts = asyncHandler(async (req, res) => {
     };
 
     const offerProducts = await Product.find(filter)
+        .select('-customerNotes')
         .sort({ offerEndDate: 1 })
         .populate(publicProductPopulate);
 
-    return ApiResponse.ok(res, 'تم جلب منتجات العروض بنجاح', offerProducts);
+    const enrichedItems = offerProducts.map((p) => injectCartFavoritesStatus(p, req.user));
+
+    return ApiResponse.ok(res, 'تم جلب منتجات العروض بنجاح', enrichedItems);
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ملاحظات الزبائن (Customer Notes)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @desc    زبون يُرسل ملاحظة/رأيه على منتج
+ * @route   POST /api/products/:id/notes
+ * @access  Private (أي مستخدم مسجل)
+ */
+exports.submitCustomerNote = asyncHandler(async (req, res) => {
+    const { noteText } = req.body;
+
+    if (!noteText || !noteText.trim()) {
+        throw new AppError('نص الملاحظة مطلوب', 400);
+    }
+
+    const product = await Product.findById(req.params.id).select('_id isActive customerNotes');
+
+    if (!product || !product.isActive) {
+        throw new AppError('المنتج غير موجود', 404);
+    }
+
+    product.customerNotes.push({
+        user: req.user.id,
+        noteText: noteText.trim()
+    });
+
+    await product.save();
+
+    return ApiResponse.created(res, 'تم إرسال ملاحظتك بنجاح. شكراً لك!', null);
+});
+
+/**
+ * @desc    الأدمن يجلب جميع ملاحظات الزبائن عبر كل المنتجات
+ * @route   GET /api/admin/products/notes
+ * @access  Private / أدمن فقط
+ */
+exports.adminGetAllNotes = asyncHandler(async (req, res) => {
+    // جلب فقط المنتجات التي تحتوي على ملاحظات واحدة على الأقل
+    const products = await Product.find({ 'customerNotes.0': { $exists: true } })
+        .select('name images customerNotes')
+        .populate({
+            path: 'customerNotes.user',
+            select: 'fullName phone email'
+        });
+
+    // تسطيح البيانات: مصفوفة من الملاحظات مع معلومات المنتج مدمجة
+    const allNotes = [];
+    for (const product of products) {
+        for (const note of product.customerNotes) {
+            allNotes.push({
+                _id: note._id,
+                product: {
+                    _id: product._id,
+                    name: product.name,
+                    image: product.images?.[0] ?? null
+                },
+                user: note.user,        // مُسكَّن بالـ populate (fullName, phone, email)
+                noteText: note.noteText,
+                createdAt: note.createdAt
+            });
+        }
+    }
+
+    // الأحدث أولاً
+    allNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return ApiResponse.ok(res, 'تم جلب ملاحظات الزبائن بنجاح', {
+        total: allNotes.length,
+        notes: allNotes
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// نقاط نهاية الأدمن (Admin Endpoints)
+// ──────────────────────────────────────────────────────────────────────────────
 
 /**
  * @route   GET /api/admin/products/:id
