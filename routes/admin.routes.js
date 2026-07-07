@@ -5,6 +5,7 @@ const { restrictTo } = require('../middlewares/role');
 const validate = require('../middlewares/validate');
 const validateQuery = require('../middlewares/validateQuery');
 const { uploadBanner, uploadCategory, uploadProduct, handleMulterError } = require('../middlewares/upload.middleware');
+const parseJsonFields = require('../middlewares/parseJsonFields');
 
 const adminController = require('../controllers/admin.controller');
 const categoryController = require('../controllers/category.controller');
@@ -62,8 +63,8 @@ router.delete('/categories/:id', categoryController.adminDeleteCategory);
 router.get('/products', validateQuery(adminProductsQuery), productController.adminListProducts);
 router.get('/products/notes', productController.adminGetAllNotes);   //  ملاحظات الزبائن
 router.get('/products/:id', productController.adminGetProduct);
-router.post('/products', uploadProduct.array('images', 10), handleMulterError, validate(createProductSchema), productController.adminCreateProduct);
-router.patch('/products/:id', uploadProduct.array('images', 10), handleMulterError, validate(updateProductSchema), productController.adminUpdateProduct);
+router.post('/products', uploadProduct.array('images', 10), handleMulterError, parseJsonFields(['sizes', 'banner']), validate(createProductSchema), productController.adminCreateProduct);
+router.patch('/products/:id', uploadProduct.array('images', 10), handleMulterError, parseJsonFields(['sizes', 'banner', 'imagesToKeep']), validate(updateProductSchema), productController.adminUpdateProduct);
 router.patch('/products/:id/featured', validate(toggleFeaturedSchema), productController.adminToggleFeatured);
 router.delete('/products/:id', productController.adminDeleteProduct);
 

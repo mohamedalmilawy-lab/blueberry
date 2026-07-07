@@ -23,6 +23,26 @@ const customerNoteSchema = new Schema(
     { _id: true }
 );
 
+// ─── Sub-schema: مقاس المنتج مع سعره الخاص ────────────────────────────────────
+const productSizeSchema = new Schema(
+    {
+        size: {
+            type: Number,
+            required: [true, 'المقاس مطلوب.'],
+            enum: {
+                values: [1, 2, 3],
+                message: 'المقاس {VALUE} غير مسموح به. القيم المتاحة: 1، 2، 3.'
+            }
+        },
+        price: {
+            type: Number,
+            required: [true, 'سعر المقاس مطلوب.'],
+            min: [0, 'سعر المقاس لا يمكن أن يكون سالبًا.']
+        }
+    },
+    { _id: false }
+);
+
 const productSchema = new Schema({
     name: {
         type: String,
@@ -67,16 +87,11 @@ const productSchema = new Schema({
     offerEndDate: {
         type: Date
     },
-    // ─── مقاسات المنتج: القيم المسموح بها هي 1 أو 2 أو 3 فقط ─────────────────
-    sizes: [
-        {
-            type: Number,
-            enum: {
-                values: [1, 2, 3],
-                message: 'المقاس {VALUE} غير مسموح به. القيم المتاحة: 1، 2، 3.'
-            }
-        }
-    ],
+    // ─── مقاسات المنتج: كل مقاس (1 أو 2 أو 3) له سعر مستقل ───────────────────
+    sizes: {
+        type: [productSizeSchema],
+        default: []
+    },
     // ─── ملاحظات الزبائن: مخفية عن الواجهة العامة، للأدمن فقط ──────────────────
     customerNotes: {
         type: [customerNoteSchema],

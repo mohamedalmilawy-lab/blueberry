@@ -35,7 +35,16 @@ const categorySchema = new Schema({
         default: ''
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual populate: جلب المنتجات المرتبطة بهذا القسم عبر حقل product.category
+categorySchema.virtual('products', {
+    ref: 'Product',
+    localField: '_id',
+    foreignField: 'category'
 });
 
 categorySchema.index({ name: 1 });

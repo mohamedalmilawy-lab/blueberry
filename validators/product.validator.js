@@ -7,6 +7,31 @@ const objectId = Joi.string().hex().length(24).messages({
 // المقاسات المسموح بها: 1 أو 2 أو 3
 const ALLOWED_SIZES = [1, 2, 3];
 
+const productSizeEntrySchema = Joi.object({
+    size: Joi.number()
+        .valid(...ALLOWED_SIZES)
+        .required()
+        .messages({ 'any.only': 'المقاسات المسموح بها هي 1 أو 2 أو 3 فقط' }),
+    price: Joi.number().min(0).required().messages({
+        'any.required': 'سعر المقاس مطلوب',
+        'number.min': 'سعر المقاس لا يمكن أن يكون سالبًا'
+    })
+});
+
+const sizesArraySchema = Joi.array()
+    .items(productSizeEntrySchema)
+    .optional()
+    .custom((value, helpers) => {
+        const seen = new Set();
+        for (const entry of value) {
+            if (seen.has(entry.size)) {
+                return helpers.message('لا يمكن تكرار نفس المقاس أكثر من مرة');
+            }
+            seen.add(entry.size);
+        }
+        return value;
+    });
+
 const createProductSchema = Joi.object({
     name: Joi.string().min(2).max(120).trim().required(),
     images: Joi.array().items(Joi.string().trim().min(1)).min(1).optional(),
@@ -18,10 +43,7 @@ const createProductSchema = Joi.object({
     isMostRequested: Joi.boolean(),
     offerPrice: Joi.number().min(0).allow(null),
     offerEndDate: Joi.date().allow(null),
-    sizes: Joi.array()
-        .items(Joi.number().valid(...ALLOWED_SIZES))
-        .optional()
-        .messages({ 'any.only': 'المقاسات المسموح بها هي 1 أو 2 أو 3 فقط' })
+    sizes: sizesArraySchema
 });
 
 const updateProductSchema = Joi.object({
@@ -35,10 +57,7 @@ const updateProductSchema = Joi.object({
     isMostRequested: Joi.boolean(),
     offerPrice: Joi.number().min(0).allow(null),
     offerEndDate: Joi.date().allow(null),
-    sizes: Joi.array()
-        .items(Joi.number().valid(...ALLOWED_SIZES))
-        .optional()
-        .messages({ 'any.only': 'المقاسات المسموح بها هي 1 أو 2 أو 3 فقط' })
+    sizes: sizesArraySchema
 })
     .min(1)
     .messages({ 'object.min': 'يجب إرسال حقل واحد على الأقل للتحديث' });

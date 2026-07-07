@@ -11,15 +11,24 @@ const publicCategoryPopulate = [
     { path: 'parent', select: 'name image isActive' },
     {
         path: 'banner',
-        match: { isActive: true }, // السر هنا: جلب الإعلانات المفعلة فقط
+        match: { isActive: true },
         select: 'imageUrl title linkType link isActive'
+    },
+    {
+        path: 'products',
+        match: { isActive: true },
+        select: '-customerNotes'
     }
 ];
 
 // 2. إعداد الـ Populate الخاص بالأدمن (يجلب كل شيء ليتمكن من الإدارة)
 const adminCategoryPopulate = [
     { path: 'parent', select: 'name image isActive' },
-    { path: 'banner', select: 'imageUrl title linkType link isActive' }
+    { path: 'banner', select: 'imageUrl title linkType link isActive' },
+    {
+        path: 'products',
+        select: '-customerNotes'
+    }
 ];
 
 /**
@@ -43,15 +52,12 @@ exports.listCategories = asyncHandler(async (req, res) => {
  * @access  Public
  */
 exports.getCategory = asyncHandler(async (req, res) => {
-    // استخدمنا publicCategoryPopulate
     const category = await Category.findById(req.params.id).populate(publicCategoryPopulate);
     if (!category || !category.isActive) {
         throw new AppError('التصنيف غير موجود', 404);
     }
 
-    const products = await Product.find({ category: req.params.id, isActive: true });
-
-    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', { category, products });
+    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', category);
 });
 
 /**
@@ -59,14 +65,12 @@ exports.getCategory = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminGetCategory = asyncHandler(async (req, res) => {
-    // استخدمنا adminCategoryPopulate
     const category = await Category.findById(req.params.id).populate(adminCategoryPopulate);
     if (!category) {
         throw new AppError('التصنيف غير موجود', 404);
     }
-    const products = await Product.find({ category: req.params.id });
 
-    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', { category, products });
+    return ApiResponse.ok(res, 'تم جلب القسم بنجاح', category);
 });
 
 /**
