@@ -4,7 +4,7 @@ const Product = require('../models/product.model');
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 
-const favPopulate = { path: 'favorites', select: 'name price images category isActive isMostRequested offerPrice offerEndDate' };
+const favPopulate = { path: 'favorites', select: 'name price images category isActive isMostRequested offerPrice offerEndDate sizes' };
 
 /**
  * @route   GET /api/favorites

@@ -15,6 +15,10 @@ const orderItemSchema = new Schema({
     priceAtOrder: {
         type: Number,
         required: true
+    },
+    size: {
+        type: Number,
+        required: false
     }
 }, { _id: false });
 

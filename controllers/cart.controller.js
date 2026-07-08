@@ -6,7 +6,7 @@ const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
 
-const cartPopulate = { path: 'cart.product', select: 'name price images category isActive offerPrice offerEndDate' };
+const cartPopulate = { path: 'cart.product', select: 'name price images category isActive offerPrice offerEndDate sizes' };
 
 function assertObjectId(id, message = 'معرف غير صالح') {
     if (!mongoose.isValidObjectId(id)) {
@@ -28,12 +28,12 @@ function computeCartTotals(cart, productsById) {
         const id = cartLineProductId(line);
         const p = id ? productsById.get(id) : undefined;
         if (!p || !p.isActive) {
-            return { product: line.product, quantity: line.quantity, unitPrice: 0, lineTotal: 0, unavailable: true };
+            return { product: line.product, quantity: line.quantity, size: line.size, unitPrice: 0, lineTotal: 0, unavailable: true };
         }
-        const unit = getEffectiveUnitPrice(p);
+        const unit = getEffectiveUnitPrice(p, line.size);
         const lineTotal = unit * line.quantity;
         subtotal += lineTotal;
-        return { product: line.product, quantity: line.quantity, unitPrice: unit, lineTotal, unavailable: false };
+        return { product: line.product, quantity: line.quantity, size: line.size, unitPrice: unit, lineTotal, unavailable: false };
     });
     return { lines, subtotal };
 }
@@ -53,7 +53,7 @@ exports.getCart = asyncHandler(async (req, res) => {
         .filter(Boolean)
         .map((id) => id.toString());
     const products = await Product.find({ _id: { $in: ids } }).select(
-        'name price images category isActive offerPrice offerEndDate'
+        'name price images category isActive offerPrice offerEndDate sizes'
     );
     const map = new Map(products.map((p) => [p._id.toString(), p]));
 
@@ -70,7 +70,7 @@ exports.getCart = asyncHandler(async (req, res) => {
  * @access  Private
  */
 exports.addCartItem = asyncHandler(async (req, res) => {
-    const { product } = req.body;
+    const { product, size } = req.body;
     const quantity = Number(req.body.quantity) || 1;
     if (quantity <= 0) throw new AppError('الكمية يجب أن تكون 1 على الأقل', 400);
     const p = await Product.findById(product);
@@ -83,11 +83,11 @@ exports.addCartItem = asyncHandler(async (req, res) => {
         throw new AppError('المستخدم غير موجود', 404);
     }
 
-    const idx = user.cart.findIndex((c) => c.product.toString() === product);
+    const idx = user.cart.findIndex((c) => c.product.toString() === product && c.size === size);
     if (idx >= 0) {
         user.cart[idx].quantity += quantity;
     } else {
-        user.cart.push({ product, quantity });
+        user.cart.push({ product, quantity, size });
     }
     await user.save();
 
@@ -109,12 +109,23 @@ exports.addCartItem = asyncHandler(async (req, res) => {
  */
 exports.removeCartItem = asyncHandler(async (req, res) => {
     assertObjectId(req.params.productId);
+    // Get size from query or body if provided
+    const { size } = req.query;
+    const sizeToMatch = size !== undefined ? Number(size) : undefined;
+    
     const user = await User.findById(req.user.id);
     if (!user) {
         throw new AppError('المستخدم غير موجود', 404);
     }
     const before = user.cart.length;
-    user.cart = user.cart.filter((c) => c.product.toString() !== req.params.productId);
+    
+    // Filter out the item with matching product and size (if size is provided)
+    user.cart = user.cart.filter((c) => {
+        const productMatch = c.product.toString() === req.params.productId;
+        const sizeMatch = sizeToMatch === undefined || c.size === sizeToMatch;
+        return !(productMatch && sizeMatch);
+    });
+    
     if (user.cart.length === before) {
         throw new AppError('العنصر غير موجود في السلة', 404);
     }
@@ -141,11 +152,18 @@ exports.removeCartItem = asyncHandler(async (req, res) => {
  */
 exports.decrementCartItem = asyncHandler(async (req, res) => {
     assertObjectId(req.params.productId);
+    const { size } = req.query;
+    const sizeToMatch = size !== undefined ? Number(size) : undefined;
+    
     const user = await User.findById(req.user.id);
     if (!user) {
         throw new AppError('المستخدم غير موجود', 404);
     }
-    const idx = user.cart.findIndex((c) => c.product.toString() === req.params.productId);
+    const idx = user.cart.findIndex((c) => {
+        const productMatch = c.product.toString() === req.params.productId;
+        const sizeMatch = sizeToMatch === undefined || c.size === sizeToMatch;
+        return productMatch && sizeMatch;
+    });
     if (idx < 0) {
         throw new AppError('العنصر غير موجود في السلة', 404);
     }

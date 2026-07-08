@@ -21,7 +21,7 @@ const { notifyAdminNewOrder } = require('../services/adminOrderNotification.serv
 const orderPopulate = [
     { path: 'user', select: 'fullName email phone' },
     { path: 'driver', select: 'fullName phone role' },
-    { path: 'items.product', select: 'name images price offerPrice offerEndDate isActive' }
+    { path: 'items.product', select: 'name images price offerPrice offerEndDate isActive sizes' }
 ];
 
 function joiToErrors(error) {
@@ -87,7 +87,7 @@ async function normalizeOrderItems(itemsInput) {
             throw new AppError('أحد المنتجات غير متوفر أو غير مفعّل', 400);
         }
 
-        const unit = getEffectiveUnitPrice(product);
+        const unit = getEffectiveUnitPrice(product, line.size);
         if (Math.abs(unit - line.priceAtOrder) > 1) {
             throw new AppError('أسعار المنتجات غير متطابقة مع المتجر. يرجى تحديث السلة والمحاولة مجدداً.', 400);
         }
@@ -96,7 +96,8 @@ async function normalizeOrderItems(itemsInput) {
         normalized.push({
             product: product._id,
             quantity: line.quantity,
-            priceAtOrder: unit
+            priceAtOrder: unit,
+            size: line.size
         });
     }
     return { items: normalized, totalPrice: total };

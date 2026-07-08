@@ -59,6 +59,10 @@ const userSchema = new Schema({
             required: true,
             min: [1, 'Quantity must be at least 1.']
         },
+        size: {
+            type: Number,
+            required: false
+        },
         _id: false // To prevent creating an id for sub-documents
     }],
     tokenVersion: {

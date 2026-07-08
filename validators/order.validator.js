@@ -24,7 +24,8 @@ const phoneSchema = Joi.string()
 const orderItemSchema = Joi.object({
     product: objectId,
     quantity: Joi.number().min(1),
-    priceAtOrder: Joi.number().min(0)
+    priceAtOrder: Joi.number().min(0),
+    size: Joi.number().valid(1, 2, 3).optional()
 });
 const savedAddressSchema = Joi.object({
     label: Joi.string().min(1).max(80).trim().required(),

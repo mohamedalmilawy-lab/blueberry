@@ -4,10 +4,11 @@ const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const bcrypt = require('bcryptjs');
+const { getEffectiveUnitPrice } = require('../utils/productPrice');
 
 const userPopulate = [
-    { path: 'favorites', select: 'name price images category isActive isMostRequested' },
-    { path: 'cart.product', select: 'name price images category isActive offerPrice' }
+    { path: 'favorites', select: 'name price images category isActive isMostRequested sizes' },
+    { path: 'cart.product', select: 'name images category isActive offerPrice sizes' }
 ];
 
 /**
