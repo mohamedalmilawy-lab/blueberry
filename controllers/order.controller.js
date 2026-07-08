@@ -428,10 +428,7 @@ exports.updateOrder = asyncHandler(async (req, res) => {
 
         if (value.status === 'تم التوصيل' && order.payment.method === 'الدفع عند التسليم') {
             const ps = value.payment?.status;
-            if (!ps) {
-                throw new AppError('يجب تحديد حالة الدفع عند التسليم عند إتمام التوصيل', 400);
-            }
-            order.payment.status = ps;
+            order.payment.status = 'تم الدفع';
         }
 
         order.status = value.status;
