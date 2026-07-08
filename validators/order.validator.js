@@ -99,7 +99,7 @@ const updateOrderByAdminSchema = Joi.object({
 // 4. تحديث من موظف التوصيل (JSON: { status, payment?: { status } })
 // ===================================================================
 const updateOrderByDriverSchema = Joi.object({
-    status: Joi.string().valid('تم التوصيل', 'ملغي').required(),
+    status: Joi.string().valid('قيد التوصيل','تم التوصيل', 'ملغي').required(),
     payment: Joi.object({
         status: Joi.string().valid('تم الدفع', 'فشل الدفع')
     }).optional()
