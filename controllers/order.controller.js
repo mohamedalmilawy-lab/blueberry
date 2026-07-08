@@ -427,7 +427,6 @@ exports.updateOrder = asyncHandler(async (req, res) => {
         }
 
         if (value.status === 'تم التوصيل' && order.payment.method === 'الدفع عند التسليم') {
-            const ps = value.payment?.status;
             order.payment.status = 'تم الدفع';
         }
 
