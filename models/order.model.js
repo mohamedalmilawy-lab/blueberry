@@ -74,6 +74,11 @@ const orderSchema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'User'
     },
+    deliveryMethod: {
+        type: String,
+        enum: ['استلام من الفرع', 'توصيل الى المنزل'],
+        required: true
+    },
     note: {
         type: String
     },

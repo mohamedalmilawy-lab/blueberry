@@ -7,7 +7,8 @@ const {
     getCart,
     addCartItem,
     removeCartItem,
-    decrementCartItem
+    decrementCartItem,
+    incrementCartItem
 } = require('../controllers/cart.controller');
 
 router.use(auth);
@@ -16,5 +17,6 @@ router.get('/', getCart);
 router.post('/items', validate(addCartItemSchema), addCartItem);
 router.delete('/items/:productId', removeCartItem);
 router.patch('/items/:productId/decrement', decrementCartItem);
+router.patch('/items/:productId/decrement', incrementCartItem);
 
 module.exports = router;

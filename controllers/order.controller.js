@@ -149,122 +149,212 @@ function assertGuestVerification(order, body) {
 
 /**
  * @route   POST /api/orders
- * @access  Public (زائر) أو خاص (زبون مسجّل)
+ * @access  Public (زائر) | Private (زبون مسجّل — optionalAuth)
+ *
+ * ── للمستخدمين المسجّلين ──────────────────────────────────────────────────
+ *   يُجاهَل أي `items` مُرسَل في الـ body تماماً.
+ *   يُجلب الـ cart مباشرةً من قاعدة البيانات لمنع التلاعب بالأسعار.
+ *   بعد إنشاء الطلب تُفرَّغ السلة تلقائياً.
+ *
+ * ── للزوار ───────────────────────────────────────────────────────────────
+ *   يجب إرسال: items[], phone, guestDetails.fullName, address, deliveryMethod
+ *
+ * ── مشترك بين الحالتين ───────────────────────────────────────────────────
+ *   الأسعار تُحسب فقط من قاعدة البيانات (getEffectiveUnitPrice).
+ *   منطق الخصم (discountCode) — خاص بالمستخدمين المسجّلين فقط.
  */
 exports.createOrder = asyncHandler(async (req, res) => {
-    let payload = { ...req.body };
-    const rawAddressInput = req.body.address;
-    const savedAddressIdRaw =
-        req.body.addressId !== undefined && req.body.addressId !== null
-            ? String(req.body.addressId).trim()
-            : '';
+    const { deliveryMethod, discountCode, note } = req.body;
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 1. التحقق من طريقة الاستلام (مشترك)
+    // ══════════════════════════════════════════════════════════════════════════
+    const VALID_DELIVERY_METHODS = ['استلام من الفرع', 'توصيل الى المنزل'];
+    if (!deliveryMethod || !VALID_DELIVERY_METHODS.includes(deliveryMethod)) {
+        return ApiResponse.badRequest(
+            res,
+            'يجب تحديد طريقة الاستلام: "استلام من الفرع" أو "توصيل الى المنزل"'
+        );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 2. جمع بيانات المصدر (مختلف بين مسجّل وزائر)
+    // ══════════════════════════════════════════════════════════════════════════
+    let rawItems;           // العناصر الخام قبل التحقق من الأسعار
+    let resolvedPhone;      // رقم الهاتف النهائي
+    let resolvedAddress;    // عنوان التوصيل النهائي (null = استلام من الفرع)
+    let orderOwnerField;    // { user: id } أو { guestDetails: {...} }
+    let userDoc = null;     // وثيقة المستخدم — محتاجها لاحقاً لتفريغ السلة
 
     if (req.user) {
-        const user = await User.findById(req.user.id).select('phone addresses');
-        delete payload.guestDetails;
-        payload.user = req.user.id;
-        if (!payload.phone && user?.phone) {
-            payload.phone = user.phone;
+        // ── مسار المستخدم المسجّل ─────────────────────────────────────────
+
+        // جلب المستخدم مع السلة والعناوين والهاتف
+        userDoc = await User.findById(req.user.id).select('cart phone addresses');
+        if (!userDoc) throw new AppError('المستخدم غير موجود', 404);
+
+        // التحقق من أن السلة غير فارغة
+        if (!userDoc.cart || userDoc.cart.length === 0) {
+            return ApiResponse.badRequest(res, 'سلة المشتريات فارغة، أضف منتجات قبل إتمام الطلب');
         }
 
-        const fromBody = pickAddressFromBody(payload);
-        let fromSaved = null;
-        if (savedAddressIdRaw) {
-            fromSaved = shippingFromSavedAddressId(user, savedAddressIdRaw);
-            if (!fromSaved) {
-                throw new AppError('معرف العنوان المحفوظ غير صالح أو غير موجود.', 400);
+        // استخراج العناصر من قاعدة البيانات — يُتجاهل body.items كلياً
+        rawItems = userDoc.cart.map((line) => ({
+            product: line.product.toString(),
+            quantity: line.quantity,
+            size:     line.size
+        }));
+
+        // حل رقم الهاتف: من الـ body أولاً ثم من الملف الشخصي
+        resolvedPhone = (req.body.phone && String(req.body.phone).trim()) || userDoc.phone;
+        if (!resolvedPhone) {
+            return ApiResponse.badRequest(res, 'رقم الهاتف مطلوب لإتمام الطلب');
+        }
+
+        // حل العنوان
+        if (deliveryMethod === 'توصيل الى المنزل') {
+            const rawAddressInput = req.body.address;
+            const savedAddressIdRaw =
+                req.body.addressId !== undefined && req.body.addressId !== null
+                    ? String(req.body.addressId).trim()
+                    : '';
+
+            const fromBody    = pickAddressFromBody(req.body);
+            const fromSaved   = savedAddressIdRaw
+                ? shippingFromSavedAddressId(userDoc, savedAddressIdRaw)
+                : null;
+            const fromProfile = firstSavedAddressAsShipping(userDoc);
+
+            // التحقق من صحة addressId إن أُرسل
+            if (savedAddressIdRaw && !fromSaved) {
+                return ApiResponse.badRequest(res, 'معرف العنوان المحفوظ غير صالح أو غير موجود');
+            }
+
+            resolvedAddress = fromBody || fromSaved || fromProfile;
+            if (!resolvedAddress) {
+                return ApiResponse.badRequest(
+                    res,
+                    'يرجى تقديم عنوان التوصيل، أو اختيار عنوان محفوظ (addressId)، أو إضافة عناوين من إعدادات الحساب'
+                );
+            }
+
+            // حفظ عنوان جديد في الملف الشخصي للمستخدم إن كان { label, street }
+            if (fromBody && rawAddressInput && typeof rawAddressInput === 'object' && !Array.isArray(rawAddressInput)) {
+                const label = typeof rawAddressInput.label === 'string' ? rawAddressInput.label.trim() : '';
+                const street = typeof rawAddressInput.street === 'string' ? rawAddressInput.street.trim() : '';
+                if (label && street) {
+                    if (!userDoc.addresses) userDoc.addresses = [];
+                    const idx = userDoc.addresses.findIndex((a) => a.label === label);
+                    if (idx >= 0) userDoc.addresses[idx] = { label, street };
+                    else userDoc.addresses.push({ label, street });
+                }
             }
         }
-        const fromProfile = firstSavedAddressAsShipping(user);
-        const resolved = fromBody || fromSaved || fromProfile;
-        if (!resolved) {
-            throw new AppError(
-                'يرجى تقديم عنوان التوصيل، أو اختيار عنوان محفوظ (addressId)، أو إضافة عناوين من إعدادات الحساب.',
-                400
+        // استلام من الفرع → لا يحتاج عنوان
+
+        orderOwnerField = { user: req.user.id };
+
+    } else {
+        // ── مسار الزائر ──────────────────────────────────────────────────────
+
+        // التحقق من وجود عناصر في الـ body
+        if (!req.body.items || !Array.isArray(req.body.items) || req.body.items.length === 0) {
+            return ApiResponse.badRequest(res, 'يجب إرسال قائمة المنتجات (items) لإتمام الطلب');
+        }
+        rawItems = req.body.items;
+
+        // التحقق من الهاتف
+        resolvedPhone = req.body.phone && String(req.body.phone).trim();
+        if (!resolvedPhone) {
+            return ApiResponse.badRequest(res, 'رقم الهاتف مطلوب لإتمام الطلب');
+        }
+
+        // التحقق من بيانات الزائر
+        const guestName =
+            req.body.guestDetails?.fullName?.trim() ||
+            req.body.guestName?.trim();
+        if (!guestName) {
+            return ApiResponse.badRequest(res, 'يجب إرسال اسم الزائر (guestDetails.fullName)');
+        }
+
+        // التحقق من العنوان للتوصيل للمنزل
+        if (deliveryMethod === 'توصيل الى المنزل') {
+            if (!req.body.address) {
+                return ApiResponse.badRequest(res, 'يرجى تزويدنا بعنوان التوصيل');
+            }
+            const rawGuestAddress = req.body.address;
+            if (typeof rawGuestAddress === 'string') {
+                const street = rawGuestAddress.trim();
+                if (!street) return ApiResponse.badRequest(res, 'يرجى تزويدنا بعنوان التوصيل');
+                resolvedAddress = labeledAddressToShipping({ label: 'عنوان التوصيل', street });
+            } else if (typeof rawGuestAddress === 'object') {
+                resolvedAddress = labeledAddressToShipping(rawGuestAddress);
+            }
+            if (!resolvedAddress) {
+                return ApiResponse.badRequest(res, 'يرجى تزويدنا بعنوان توصيل صالح');
+            }
+        }
+
+        orderOwnerField = { guestDetails: { fullName: guestName } };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 3. حساب الأسعار من قاعدة البيانات (مشترك — يمنع التلاعب من العميل)
+    // ══════════════════════════════════════════════════════════════════════════
+    const productIds  = rawItems.map((line) => line.product);
+    const products    = await Product.find({ _id: { $in: productIds } });
+    const productsMap = new Map(products.map((p) => [p._id.toString(), p]));
+
+    let computedTotal   = 0;
+    const normalizedItems = [];
+
+    for (const line of rawItems) {
+        const product = productsMap.get(line.product.toString());
+
+        // التحقق من أن المنتج موجود ومفعّل
+        if (!product || !product.isActive) {
+            return ApiResponse.badRequest(
+                res,
+                'أحد المنتجات غير متوفر أو غير مفعّل، يرجى مراجعة الطلب والمحاولة مجدداً'
             );
         }
 
-        // عنوان جديد في الطلب: إن وُجد { label, street } نحدّث قائمة العناوين المحفوظة (بدون حقل address القديم)
-        if (fromBody) {
-            if (rawAddressInput && typeof rawAddressInput === 'object' && !Array.isArray(rawAddressInput)) {
-                const label =
-                    typeof rawAddressInput.label === 'string' ? rawAddressInput.label.trim() : '';
-                const street =
-                    typeof rawAddressInput.street === 'string' ? rawAddressInput.street.trim() : '';
-                if (label && street) {
-                    if (!user.addresses) user.addresses = [];
-                    const idx = user.addresses.findIndex((a) => a.label === label);
-                    const entry = { label, street };
-                    if (idx >= 0) user.addresses[idx] = entry;
-                    else user.addresses.push(entry);
-                }
-            }
-            if (payload.phone) user.phone = payload.phone;
+        // السعر الفعلي من قاعدة البيانات — يتجاهل أي سعر مُرسَل من العميل
+        const unitPrice  = getEffectiveUnitPrice(product, line.size);
+        computedTotal   += unitPrice * line.quantity;
 
-            await user.save();
-        } else if (payload.phone && String(payload.phone) !== String(user.phone)) {
-            user.phone = payload.phone;
-            await user.save();
-        }
-
-        payload.addresses = [resolved];
-    } else {
-        delete payload.user;
-
-        const rawGuestAddress = req.body.address;
-        if (rawGuestAddress === undefined || rawGuestAddress === null) {
-            throw new AppError('يرجى تزويدنا بعنوان التوصيل.', 400);
-        }
-        let guestResolved = null;
-        if (typeof rawGuestAddress === 'string') {
-            const street = rawGuestAddress.trim();
-            if (street) {
-                guestResolved = labeledAddressToShipping({ label: 'عنوان التوصيل', street });
-            }
-        } else if (typeof rawGuestAddress === 'object') {
-            guestResolved = labeledAddressToShipping(rawGuestAddress);
-        }
-        if (!guestResolved) {
-            throw new AppError('يرجى تزويدنا بعنوان التوصيل.', 400);
-        }
-        payload.addresses = [guestResolved];
+        normalizedItems.push({
+            product:      product._id,
+            quantity:     line.quantity,
+            priceAtOrder: unitPrice,
+            size:         line.size
+        });
     }
 
-    delete payload.address;
-    delete payload.addressId;
+    computedTotal = Math.round(computedTotal * 100) / 100;
 
-    const { error, value } = createOrderSchema.validate(payload, {
-        abortEarly: false,
-        stripUnknown: true
-    });
-    if (error) {
-        return ApiResponse.badRequest(res, 'فشل التحقق من صحة البيانات', joiToErrors(error));
-    }
+    // ══════════════════════════════════════════════════════════════════════════
+    // 4. معالجة كود الخصم (خاص بالمستخدمين المسجّلين فقط)
+    // ══════════════════════════════════════════════════════════════════════════
+    let discountCodeId  = null;
+    let discountPct     = 0;
+    let finalPrice      = computedTotal;
+    let discountDoc     = null;
 
-    const { items, totalPrice } = await normalizeOrderItems(value.items);
-
-    // ─── معالجة كود الخصم إن وُجد ───
-    let discountCodeId = null;
-    let discountPct = 0;
-    let finalPrice = totalPrice;
-    let discountDoc = null; // أضفنا هذا المتغير للاحتفاظ ببيانات الخصم لتحديثه لاحقاً
-
-    if (value.discountCode) {
-        // 1. البحث عن الكود
-        discountDoc = await Discount.findOne({ code: value.discountCode.toUpperCase() });
-        if (!discountDoc) {
-            throw new AppError('كود الخصم غير موجود', 404);
-        }
-
-        // 2. هل الكود فعّال؟
-        if (!discountDoc.isActive) {
-            throw new AppError('كود الخصم غير فعال', 400);
-        }
-
-        // 3. هل الكود مخصص لهذا المستخدم؟ (يجب أن يكون مسجّل دخول)
+    if (discountCode) {
+        // كود الخصم يتطلب تسجيل الدخول
         if (!req.user) {
             throw new AppError('يجب تسجيل الدخول لاستخدام كود الخصم', 401);
         }
+
+        // 1. البحث عن الكود
+        discountDoc = await Discount.findOne({ code: discountCode.trim().toUpperCase() });
+        if (!discountDoc) throw new AppError('كود الخصم غير موجود', 404);
+
+        // 2. هل الكود فعّال؟
+        if (!discountDoc.isActive) throw new AppError('كود الخصم غير فعال', 400);
+
+        // 3. هل الكود مخصص لهذا المستخدم؟
         if (discountDoc.assignedUser.toString() !== req.user.id) {
             throw new AppError('هذا الكود لا ينتمي إليك', 403);
         }
@@ -274,26 +364,35 @@ exports.createOrder = asyncHandler(async (req, res) => {
             throw new AppError('تم تجاوز حد الاستخدام لهذا الكود', 400);
         }
 
-        // 5. حساب السعر النهائي بعد الخصم
-        discountPct = discountDoc.discountPercentage;
-        finalPrice = totalPrice * (1 - (discountPct / 100));
-        finalPrice = Math.round(finalPrice * 100) / 100; // تقريب لأقرب فلس
+        // 5. تطبيق الخصم
+        discountPct    = discountDoc.discountPercentage;
+        finalPrice     = Math.round(computedTotal * (1 - discountPct / 100) * 100) / 100;
         discountCodeId = discountDoc._id;
     }
 
-    // حذف discountCode من payload لأنه ليس حقلاً نصياً في الـ Schema
-    delete value.discountCode;
-
+    // ══════════════════════════════════════════════════════════════════════════
+    // 5. إنشاء الطلب
+    // ══════════════════════════════════════════════════════════════════════════
     const order = await Order.create({
-        ...value,
-        items,
-        totalPrice,
-        discountCode: discountCodeId,
+        ...orderOwnerField,
+        items:              normalizedItems,
+        totalPrice:         computedTotal,
+        discountCode:       discountCodeId,
         discountPercentage: discountPct,
-        finalPrice
+        finalPrice,
+        deliveryMethod,
+        phone:              resolvedPhone,
+        payment:            { method: 'الدفع عند التسليم' },
+        status:             'تم الطلب',
+        ...(resolvedAddress && { addresses: [resolvedAddress] }),
+        ...(note            && { note: String(note).trim() })
     });
 
-    // ✅ زيادة عداد الاستخدام بعد التأكد من نجاح إنشاء الطلب
+    // ══════════════════════════════════════════════════════════════════════════
+    // 6. تحديثات ما بعد الإنشاء
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // زيادة عداد استخدام كود الخصم (بعد نجاح إنشاء الطلب)
     if (discountDoc) {
         await Discount.updateOne(
             { _id: discountDoc._id },
@@ -301,12 +400,24 @@ exports.createOrder = asyncHandler(async (req, res) => {
         );
     }
 
+    // تفريغ سلة المستخدم المسجّل وتحديث هاتفه إن تغيّر
+    if (userDoc) {
+        userDoc.cart = [];
+        const newPhone = req.body.phone && String(req.body.phone).trim();
+        if (newPhone && newPhone !== userDoc.phone) userDoc.phone = newPhone;
+        await userDoc.save();
+    }
+
+    // إشعار الأدمن (best-effort — لا يُوقف الطلب عند الفشل)
     try {
         await notifyAdminNewOrder(order);
     } catch (err) {
-        console.error('notifyAdminNewOrder failed', err);
+        console.error('createOrder → notifyAdminNewOrder failed:', err);
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // 7. إرجاع الطلب المُنشأ مع populate
+    // ══════════════════════════════════════════════════════════════════════════
     const populated = await Order.findById(order._id).populate(orderPopulate);
     return ApiResponse.created(res, 'تم إنشاء الطلب بنجاح', populated);
 });

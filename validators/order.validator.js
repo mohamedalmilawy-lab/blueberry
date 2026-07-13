@@ -27,22 +27,37 @@ const orderItemSchema = Joi.object({
     priceAtOrder: Joi.number().min(0),
     size: Joi.number().valid(1, 2, 3).optional()
 });
+
 const savedAddressSchema = Joi.object({
     label: Joi.string().min(1).max(80).trim().required(),
     street: Joi.string().min(1).max(1000).trim().required()
 });
+
 // ======================================================
 // 1. مخطط إنشاء الطلب (Create Order Schema)
 // ======================================================
 const createOrderSchema = Joi.object({
     user: objectId,
     guestDetails: Joi.object({ fullName: Joi.string().required() }),
-    addresses: Joi.array().items(savedAddressSchema).max(50).required(),
+
+    // اختياري: مطلوب للتوصيل، غير مطلوب للاستلام من الفرع
+    addresses: Joi.array().items(savedAddressSchema).max(50).optional(),
+
+    // اختياري: يُحقن من قاعدة البيانات للمستخدمين المسجّلين، مطلوب للزوار
     items: Joi.array()
         .items(orderItemSchema)
         .min(1)
-        .required()
+        .optional()
         .messages({ 'array.min': 'يجب أن يحتوي الطلب على منتج واحد على الأقل' }),
+
+    deliveryMethod: Joi.string()
+        .valid('استلام من الفرع', 'توصيل الى المنزل')
+        .required()
+        .messages({
+            'any.required': 'يجب تحديد طريقة الاستلام',
+            'any.only': 'طريقة الاستلام يجب أن تكون "استلام من الفرع" أو "توصيل الى المنزل"'
+        }),
+
     status: Joi.string().valid(...ORDER_STATUSES).default('تم الطلب'),
     payment: Joi.object({
         method: Joi.string().valid('الدفع عند التسليم').required(),
