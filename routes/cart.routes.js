@@ -17,6 +17,6 @@ router.get('/', getCart);
 router.post('/items', validate(addCartItemSchema), addCartItem);
 router.delete('/items/:productId', removeCartItem);
 router.patch('/items/:productId/decrement', decrementCartItem);
-router.patch('/items/:productId/decrement', incrementCartItem);
+router.patch('/items/:productId/increment', incrementCartItem);
 
 module.exports = router;
