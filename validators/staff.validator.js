@@ -1,21 +1,10 @@
 //الصفحة المسؤلة عن اضافة وعرض وفلترة مستخدمين اي كان نوعهم('زبون', 'مشرف', 'أدمن', 'موظف توصيل')
 const Joi = require('joi');
-const passwordComplexity = require('joi-password-complexity');
-
-const complexityOptions = {
-    min: 6,
-    max: 30,
-    lowerCase: 1,
-    upperCase: 1,
-    numeric: 0,
-    symbol: 0,
-    requirementCount: 2
-};
 
 const createStaffUserSchema = Joi.object({
     fullName: Joi.string().min(2).max(50).trim().required(),
     email: Joi.string().email().trim().required(),
-    password: passwordComplexity(complexityOptions).required(),
+    password: Joi.string().min(6).max(30).required(),
     phone: Joi.string()
         .pattern(/^[0-9]+$/)
         .min(8)
@@ -38,7 +27,7 @@ const updateUserSchema = Joi.object({
             'string.pattern.base': 'رقم الهاتف يجب أن يحتوي على أرقام فقط'
         }), // اختياري
     role: Joi.string().valid('زبون', 'مشرف', 'أدمن', 'موظف توصيل'), // اختياري، يسمح للمسؤول بتغيير دور المستخدم
-    password: passwordComplexity(complexityOptions),
+    password: Joi.string().min(6).max(30),
 });
 
 

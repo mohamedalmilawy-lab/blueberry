@@ -438,15 +438,14 @@ exports.listOrders = asyncHandler(async (req, res) => {
         filter.user = uid;
     } else if (role === 'موظف توصيل') {
         filter.driver = uid;
-
-        // Apply tab filtering for delivery staff
-        if (tab === 'current') {
-            filter.status = { $nin: ['تم التوصيل', 'ملغى'] };
-        } else if (tab === 'past') {
-            filter.status = 'تم التوصيل';
-        } else if (tab === 'cancelled') {
-            filter.status = 'ملغى';
-        }
+    }
+    // Apply tab filtering for delivery staff
+    if (tab === 'current') {
+        filter.status = { $nin: ['تم التوصيل', 'ملغى'] };
+    } else if (tab === 'past') {
+        filter.status = 'تم التوصيل';
+    } else if (tab === 'cancelled') {
+        filter.status = 'ملغى';
     }
 
     // Get orders with pagination

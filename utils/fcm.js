@@ -11,7 +11,9 @@ function getFirebaseApp() {
     if (json && json.trim()) {
         let cred;
         try {
-            cred = JSON.parse(json);
+            // هذا السطر يقوم بإصلاح مشكلة الأسطر الجديدة المخفية في ملف الـ .env
+            const sanitizedJson = json.replace(/\\n/g, '\n');
+            cred = JSON.parse(sanitizedJson);
         } catch {
             throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON');
         }
