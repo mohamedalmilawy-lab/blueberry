@@ -445,7 +445,7 @@ exports.listOrders = asyncHandler(async (req, res) => {
     } else if (tab === 'past') {
         filter.status = 'تم التوصيل';
     } else if (tab === 'cancelled') {
-        filter.status = 'ملغى';
+        filter.status = 'ملغي';
     }
 
     // Get orders with pagination
