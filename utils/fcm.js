@@ -20,17 +20,23 @@ function getFirebaseApp() {
                 sanitizedJson = sanitizedJson.slice(1, -1);
             }
             
-            // استبدال كل أنواع الأسطر الجديدة المخفية (\\n, \r\n, \r)
+            // 1. استبدال أي نوع من الأسطر الجديدة بـ \n بشكل صحيح
             sanitizedJson = sanitizedJson
-                .replace(/\\n/g, '\n')
-                .replace(/\\r/g, '\r')
-                .replace(/\\t/g, '\t')
-                .replace(/\\'/g, "'")
-                .replace(/\\"/g, '"');
+                // استبدال كل أنواع الأسطر الجديدة الحقيقية
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                // استبدال جميع الأسطر الجديدة المكسورة بشكل صحيح
+                .replace(/\n/g, '\\n');
+            
+            // 2. إزالة أو استبدال كل الأحرف التحكم غير المرغوب فيها
+            sanitizedJson = sanitizedJson
+                .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, ''); // إزالة كل الحروف التحكم ما عدا \t و \n
                 
+            // 3. محاولة تحليل الـ JSON الآن
             cred = JSON.parse(sanitizedJson);
         } catch (err) {
             console.error('FIREBASE_SERVICE_ACCOUNT_JSON parsing error:', err);
+            console.error('Raw value (truncated):', json.substring(0, 1000));
             throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON');
         }
         return admin.initializeApp({
