@@ -7,6 +7,7 @@ const Discount = require('../models/discount.model');
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
+const { getPaginationFromQuery } = require('../utils/pagination');
 const {
     createOrderSchema,
     updateOrderByUserPlacedSchema,
@@ -427,16 +428,48 @@ exports.createOrder = asyncHandler(async (req, res) => {
  * @access  Private(زبون, موظف توصيل)
  */
 exports.listOrders = asyncHandler(async (req, res) => {
-    const role = req.user.role;
+    const { role, id: uid } = req.user;
+    const { tab = 'current', page, limit } = req.query;
+    const { page: currentPage, limit: currentLimit, skip } = getPaginationFromQuery(req.query);
+    
     const filter = {};
+
     if (role === 'زبون') {
-        filter.user = req.user.id;
+        filter.user = uid;
     } else if (role === 'موظف توصيل') {
-        filter.driver = req.user.id;
+        filter.driver = uid;
+
+        // Apply tab filtering for delivery staff
+        if (tab === 'current') {
+            filter.status = { $nin: ['تم التوصيل', 'ملغى'] };
+        } else if (tab === 'past') {
+            filter.status = 'تم التوصيل';
+        } else if (tab === 'cancelled') {
+            filter.status = 'ملغى';
+        }
     }
 
-    const orders = await Order.find(filter).sort({ createdAt: -1 }).populate(orderPopulate);
-    return ApiResponse.ok(res, 'تم جلب الطلبات بنجاح', orders);
+    // Get orders with pagination
+    const [orders, totalCount] = await Promise.all([
+        Order.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(currentLimit)
+            .populate(orderPopulate),
+        Order.countDocuments(filter)
+    ]);
+
+    const totalPages = Math.ceil(totalCount / currentLimit);
+
+    return ApiResponse.ok(res, 'تم جلب الطلبات بنجاح', {
+        items: orders,
+        meta: {
+            page: currentPage,
+            limit: currentLimit,
+            total: totalCount,
+            pages: totalPages
+        }
+    });
 });
 
 /**
@@ -524,10 +557,6 @@ exports.updateOrder = asyncHandler(async (req, res) => {
         if (!order.driver || order.driver.toString() !== uid) {
             throw new AppError('هذا الطلب غير مخصص لك', 403);
         }
-        const allowedFrom = ['تم التحضير', 'قيد التوصيل'];
-        if (!allowedFrom.includes(order.status)) {
-            throw new AppError('لا يمكن تحديث حالة هذا الطلب في وضعه الحالي', 400);
-        }
 
         const { error, value } = updateOrderByDriverSchema.validate(req.body, {
             abortEarly: false,
@@ -538,7 +567,11 @@ exports.updateOrder = asyncHandler(async (req, res) => {
         }
 
         if (value.status === 'تم التوصيل' && order.payment.method === 'الدفع عند التسليم') {
-            order.payment.status = 'تم الدفع';
+            // If payment status is provided, use it; default to 'تم الدفع' if not
+            order.payment.status = value.payment?.status || 'تم الدفع';
+        } else if (value.payment?.status) {
+            // If delivery driver wants to update payment status for other cases
+            order.payment.status = value.payment.status;
         }
 
         order.status = value.status;
