@@ -11,10 +11,26 @@ function getFirebaseApp() {
     if (json && json.trim()) {
         let cred;
         try {
-            // هذا السطر يقوم بإصلاح مشكلة الأسطر الجديدة المخفية في ملف الـ .env
-            const sanitizedJson = json.replace(/\\n/g, '\n');
+            // إصلاح مشاكل مختلفة في JSON من ملف الـ .env
+            let sanitizedJson = json.trim();
+            
+            // إزالة علامات الاقتباس المحيطة إذا كانت موجودة (مثل "{"type":"service_account"}")
+            if ((sanitizedJson.startsWith('"') && sanitizedJson.endsWith('"')) ||
+                (sanitizedJson.startsWith("'") && sanitizedJson.endsWith("'"))) {
+                sanitizedJson = sanitizedJson.slice(1, -1);
+            }
+            
+            // استبدال كل أنواع الأسطر الجديدة المخفية (\\n, \r\n, \r)
+            sanitizedJson = sanitizedJson
+                .replace(/\\n/g, '\n')
+                .replace(/\\r/g, '\r')
+                .replace(/\\t/g, '\t')
+                .replace(/\\'/g, "'")
+                .replace(/\\"/g, '"');
+                
             cred = JSON.parse(sanitizedJson);
-        } catch {
+        } catch (err) {
+            console.error('FIREBASE_SERVICE_ACCOUNT_JSON parsing error:', err);
             throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON');
         }
         return admin.initializeApp({
