@@ -78,6 +78,7 @@ exports.login = asyncHandler(async (req, res) => {
 
     // البحث بالبريد الإلكتروني أو رقم الهاتف باستخدام $or
     const trimmedIdentifier = identifier.trim();
+
     const user = await User.findOne({
         $or: [
             { email: trimmedIdentifier.toLowerCase() },
