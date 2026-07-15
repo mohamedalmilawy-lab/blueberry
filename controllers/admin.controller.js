@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/user.model');
 const Order = require('../models/order.model');
+const Notification = require('../models/notification.model');
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const { getPaginationFromQuery } = require('../utils/pagination');
@@ -185,22 +186,30 @@ exports.broadcastPush = asyncHandler(async (req, res) => {
     }
 
     const { title, message } = req.body;
-    const tokens = await DeviceToken.distinct('token');
-
-    if (tokens.length === 0) {
-        return ApiResponse.ok(res, 'لا توجد أجهزة مسجّلة لإرسال الإشعار إليها', {
-            successCount: 0,
-            failureCount: 0,
-            totalTokens: 0
-        });
-    }
-
-    const { successCount, failureCount } = await sendMulticastToTokens(tokens, {
+    
+    // 1. Save notification to database FIRST!
+    const notification = await Notification.create({
         title,
-        body: message
+        message,
+        user: null,
+        isGlobal: true
     });
 
+    // 2. Then send FCM push notifications!
+    const tokens = await DeviceToken.distinct('token');
+    let successCount = 0, failureCount = 0;
+    
+    if (tokens.length > 0) {
+        const fcmResult = await sendMulticastToTokens(tokens, {
+            title,
+            body: message
+        });
+        successCount = fcmResult.successCount;
+        failureCount = fcmResult.failureCount;
+    }
+
     return ApiResponse.ok(res, 'تم إرسال الرسالة الجماعية بنجاح', {
+        notification,
         successCount,
         failureCount,
         totalTokens: tokens.length

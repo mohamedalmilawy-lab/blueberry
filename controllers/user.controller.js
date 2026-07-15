@@ -1,10 +1,12 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/user.model');
+const Notification = require('../models/notification.model');
 const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const bcrypt = require('bcryptjs');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
+const { getPaginationFromQuery } = require('../utils/pagination');
 
 const userPopulate = [
     { path: 'favorites', select: 'name price images category isActive isMostRequested sizes' },
@@ -90,4 +92,51 @@ exports.changePassword = asyncHandler(async (req, res, next) => {
     await user.save();
 
     return ApiResponse.ok(res, 'تم تغيير كلمة المرور بنجاح!');
+});
+
+/**
+ * @desc    Get logged-in user notifications (personal + global)
+ * @route   GET /api/users/me/notifications
+ * @access  Private
+ */
+exports.getUserNotifications = asyncHandler(async (req, res) => {
+    const userId = req.user?.id;
+    const { page, limit, skip } = getPaginationFromQuery(req.query);
+    
+    // Build query based on whether the user is logged in or not!
+    let query = {};
+    if (userId) {
+        // Logged in: show personal + global!
+        query = {
+            $or: [
+                { user: userId },
+                { isGlobal: true }
+            ]
+        };
+    } else {
+        // Guest: only show global notifications!
+        query = {
+            isGlobal: true
+        };
+    }
+
+    const [items, totalCount] = await Promise.all([
+        Notification.find(query)
+        .sort({ createdAt: -1 }) 
+        .skip(skip)
+        .limit(limit),
+        Notification.countDocuments(query)
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return ApiResponse.ok(res, 'تم جلب الإشعارات بنجاح', {
+        items,
+        meta: {
+            page,
+            limit,
+            total: totalCount,
+            pages: totalPages
+        }
+    });
 });
