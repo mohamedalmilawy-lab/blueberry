@@ -185,14 +185,14 @@ exports.broadcastPush = asyncHandler(async (req, res) => {
         throw new AppError('خدمة الإشعارات (FCM) غير مهيأة على الخادم', 503);
     }
 
-    const { title, message ,user} = req.body;
+    const { title, message ,user, isGlobal} = req.body;
     
     // 1. Save notification to database FIRST!
     const notification = await Notification.create({
         title,
         message,
         user: user?? null,
-        isGlobal: true
+        isGlobal: isGlobal?? true
     });
 
     // 2. Then send FCM push notifications!

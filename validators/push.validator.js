@@ -6,6 +6,7 @@ const broadcastPushSchema = Joi.object({
     user: Joi.string().hex().length(24).messages({
         'string.pattern.base': 'معرف غير صالح'
     }).optional(),
+    isGlobal: Joi.bool()
 });
 
 module.exports = { broadcastPushSchema };
