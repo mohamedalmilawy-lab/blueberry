@@ -11,11 +11,13 @@ exports.registerPushToken = asyncHandler(async (req, res) => {
     const { token } = req.body;
     const userId = req.user?.id || null;
 
-    await DeviceToken.findOneAndUpdate(
-        { token },
-        { token, user: userId },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+    // خزن النتيجة في متغير
+    const updatedDevice = await DeviceToken.findOneAndUpdate(
+    { token },
+    { token, user: userId },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    return ApiResponse.ok(res, 'تم تسجيل الجهاز للإشعارات');
+    // أرسل البيانات المحفوظة داخل الـ Response
+    return ApiResponse.ok(res, 'تم تسجيل الجهاز للإشعارات', { device: updatedDevice });
 });
