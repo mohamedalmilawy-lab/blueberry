@@ -16,7 +16,7 @@ exports.registerPushToken = asyncHandler(async (req, res) => {
     { token },
     { token, user: userId },
     { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    ).populate('user', '-password'); // لا نريد إرجاع كلمة المرور!
 
     // أرسل البيانات المحفوظة داخل الـ Response
     return ApiResponse.ok(res, 'تم تسجيل الجهاز للإشعارات', { device: updatedDevice });
