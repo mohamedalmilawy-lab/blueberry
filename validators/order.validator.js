@@ -14,7 +14,6 @@ const objectId = Joi.string().hex().length(24).messages({
 });
 
 const phoneSchema = Joi.string()
-    .pattern(/^[0-9]+$/)
     .min(8)
     .max(15)
     .messages({
