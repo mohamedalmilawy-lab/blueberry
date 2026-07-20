@@ -35,10 +35,7 @@ const sizesArraySchema = Joi.array()
 // ─── مخطط إنشاء منتج ──────────────────────────────────────────────────────────
 const createProductSchema = Joi.object({
     name: Joi.string().min(2).max(120).trim().required(),
-    images: Joi.array().items(Joi.string().trim().min(1)).min(1).optional().messages({
-        'any.required': 'صور المنتج مطلوبة',
-        'array.min': 'يجب إضافة صورة واحدة على الأقل'
-    }),
+    images: Joi.array().items(Joi.string().trim().min(1)).min(1).optional(),
     details: Joi.string().min(5).max(5000).required(),
     price: Joi.number().min(0).required(),
     category: objectId.required(),
