@@ -73,24 +73,30 @@ function sortFromQuery(sortKey) {
  *
  * @param {object} productDoc - مستند Mongoose أو كائن عادي
  * @param {object|null} user  - req.user (أو null إذا كان الزائر غير مسجل)
- * @returns {object} كائن عادي (plain object) يحتوي على inCart و inFavorites
+ * @returns {object} كائن عادي (plain object) يحتوي على:
+ *   - inCart {Array}   - مصفوفة بالأحجام المضافة في الكارت لهذا المنتج.
+ *                        مثال (بأحجام): ["صغير", "وسط"]
+ *                        مثال (بدون أحجام، في الكارت): [null]
+ *                        مثال (غير موجود في الكارت): []
+ *   - inFavorites {boolean}
  */
 function injectCartFavoritesStatus(productDoc, user) {
     // تحويل مستند Mongoose إلى كائن JS عادي قابل للتعديل
     const product = productDoc.toObject ? productDoc.toObject() : { ...productDoc };
 
     if (!user) {
-        product.inCart = false;
+        product.inCart = [];
         product.inFavorites = false;
         return product;
     }
 
     const productId = product._id.toString();
 
-    // cart هي مصفوفة من { product: ObjectId, quantity: Number }
-    product.inCart = (user.cart || []).some(
-        (item) => item.product?.toString() === productId
-    );
+    // cart هي مصفوفة من { product: ObjectId, quantity: Number, size?: Number|String }
+    // نجمع كل الأحجام المضافة في الكارت لهذا المنتج تحديداً
+    product.inCart = (user.cart || [])
+        .filter((item) => item.product?.toString() === productId)
+        .map((item) => item.size ?? null); // null = منتج بدون حجم
 
     // favorites هي مصفوفة من ObjectId مباشرةً
     product.inFavorites = (user.favorites || []).some(

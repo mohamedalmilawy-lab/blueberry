@@ -27,12 +27,9 @@ const customerNoteSchema = new Schema(
 const productSizeSchema = new Schema(
     {
         size: {
-            type: Number,
+            type: String, // النوع String كما طلبت
             required: [true, 'المقاس مطلوب.'],
-            enum: {
-                values: [1, 2, 3],
-                message: 'المقاس {VALUE} غير مسموح به. القيم المتاحة: 1، 2، 3.'
-            }
+            default: 'صغير' // إضافة القيمة الافتراضية هنا
         },
         price: {
             type: Number,
