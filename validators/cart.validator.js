@@ -7,7 +7,7 @@ const objectId = Joi.string().hex().length(24).messages({
 const addCartItemSchema = Joi.object({
     product: objectId.required(),
     quantity: Joi.number().integer().min(1).default(1),
-    size: Joi.number().integer().optional()
+    size: Joi.string().optional()
 });
 
 module.exports = {

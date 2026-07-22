@@ -60,8 +60,8 @@ const userSchema = new Schema({
             min: [1, 'Quantity must be at least 1.']
         },
         size: {
-            type: Number,
-            required: false
+            type: String, // النوع String كما طلبت
+            required: [true, 'المقاس مطلوب.']
         },
         _id: false // To prevent creating an id for sub-documents
     }],
