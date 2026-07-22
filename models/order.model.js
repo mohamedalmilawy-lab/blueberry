@@ -17,7 +17,7 @@ const orderItemSchema = new Schema({
         required: true
     },
     size: {
-        type: Number,
+        type: String,
         required: false
     }
 }, { _id: false });

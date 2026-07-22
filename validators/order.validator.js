@@ -24,7 +24,7 @@ const orderItemSchema = Joi.object({
     product: objectId,
     quantity: Joi.number().min(1),
     priceAtOrder: Joi.number().min(0),
-    size: Joi.number().valid(1, 2, 3).optional()
+    size: Joi.string().trim().optional()
 });
 
 const savedAddressSchema = Joi.object({
