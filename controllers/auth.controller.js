@@ -157,23 +157,43 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     const { token } = req.params;
     const { password, confirmPassword } = req.body;
 
+    // 1. التحقق من إرسال كلمة المرور فعلاً
+    if (!password || !confirmPassword) {
+        throw new AppError('يرجى إدخال كلمة المرور وتأكيدها', 400);
+    }
+
+    // 2. تحقق من الحد الأدنى لطول كلمة المرور (طبقة حماية إضافية بجانب الـ schema)
+    if (password.length < 6) {
+        throw new AppError('كلمة المرور يجب أن تكون 8 أحرف على الأقل', 400);
+    }
+
+    // 3. التحقق من تطابق كلمتي المرور
     if (password !== confirmPassword) {
         throw new AppError('كلمات المرور غير متطابقة', 400);
     }
+
     const hashed = hashResetToken(token);
+
+    // لا حاجة لجلب +password لأننا لا نستخدم القيمة القديمة إطلاقاً
     const user = await User.findOne({
         passwordResetToken: hashed,
         passwordResetExpire: { $gt: Date.now() }
-    }).select('+password +passwordResetToken +passwordResetExpire');
+    }).select('+passwordResetToken +passwordResetExpire');
+
     if (!user) {
         throw new AppError('الرمز غير صالح أو منتهي', 400);
     }
+
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpire = undefined;
 
+    // إبطال كل الجلسات/التوكنات القديمة فوراً
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
+
+    // (اختياري) إرسال إيميل تنبيهي بأن كلمة المرور تغيّرت
+    // await sendEmail({ email: user.email, subject: 'تم تغيير كلمة المرور', message: '...' });
 
     return ApiResponse.ok(res, 'تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
 });
