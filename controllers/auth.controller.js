@@ -192,9 +192,6 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
 
-    // (اختياري) إرسال إيميل تنبيهي بأن كلمة المرور تغيّرت
-    // await sendEmail({ email: user.email, subject: 'تم تغيير كلمة المرور', message: '...' });
-
     return ApiResponse.ok(res, 'تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
 });
 

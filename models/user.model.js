@@ -34,7 +34,6 @@ const userSchema = new Schema({
         minlength: 8,
         maxlength: 15
     },
-    /** عدة عناوين محفوظة: التسمية (مثل المنزل، العمل) + نص العنوان الكامل */
     addresses: {
         type: [
             {
@@ -47,8 +46,8 @@ const userSchema = new Schema({
     favorites: [{
         type: Schema.Types.ObjectId,
         ref: 'Product'
-    }],    
-    
+    }],
+
     cart: [{
         product: {
             type: Schema.Types.ObjectId,
@@ -60,10 +59,10 @@ const userSchema = new Schema({
             min: [1, 'Quantity must be at least 1.']
         },
         size: {
-            type: String, // النوع String كما طلبت
-            required: [true, 'المقاس مطلوب.']
+            type: String,
+            required: false
         },
-        _id: false // To prevent creating an id for sub-documents
+        _id: false
     }],
     tokenVersion: {
         type: Number,
@@ -82,12 +81,21 @@ const userSchema = new Schema({
 });
 
 // Hash password before saving the user
+// ✅ تم إصلاح المشكلة: إما استخدام next() بشكل صريح دائماً،
+// أو حذف next من الباراميترات بالكامل والاعتماد على async/await فقط.
+// هنا اخترنا الخيار الأول (next صريح) لأنه أوضح وأقل عرضة للأخطاء المستقبلية.
 userSchema.pre('save', async function (next) {
-    if (!this.isModified('password'))
-        return;
+    if (!this.isModified('password')) {
+        return next();
+    }
 
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        return next();
+    } catch (err) {
+        return next(err);
+    }
 });
 
 const User = mongoose.model('User', userSchema);
