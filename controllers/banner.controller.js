@@ -95,11 +95,6 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
  * @access  Private / أدمن
  */
 exports.adminCreateBanner = asyncHandler(async (req, res) => {
-    // أضف هذه الأسطر مؤقتاً لتنظيف الحقل المسبب للمشكلة
-await Product.updateMany({}, { $unset: { banner: "" } });
-await Category.updateMany({}, { $unset: { banner: "" } });
-
-
     // Cloudinary يُعيد الـ URL الآمن عبر req.file.path
     if (req.file) {
         req.body.imageUrl = req.file.path;
