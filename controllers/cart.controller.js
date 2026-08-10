@@ -6,9 +6,9 @@ const AppError = require('../utils/AppError');
 const ApiResponse = require('../utils/ApiResponse');
 const { getEffectiveUnitPrice } = require('../utils/productPrice');
 
-const cartPopulate = { 
-    path: 'cart.product', 
-    select: 'name price images category isActive offerPrice offerEndDate sizes' 
+const cartPopulate = {
+    path: 'cart.product',
+    select: 'name price images category isActive offerPrice offerEndDate sizes'
 };
 
 function assertObjectId(id, message = 'معرف غير صالح') {
@@ -25,24 +25,34 @@ function cartLineProductId(line) {
     return ref.toString();
 }
 
+/**
+ * تطبيع قيمة المقاس لتوحيد المقارنة في كل العمليات (إضافة/حذف/زيادة/نقصان).
+ * undefined أو null أو '' تُعامل كقيمة واحدة موحّدة "بدون مقاس".
+ */
+function normalizeSize(size) {
+    if (size === undefined || size === null) return undefined;
+    const trimmed = String(size).trim();
+    return trimmed === '' ? undefined : trimmed;
+}
+
 /** دالة لحساب الإجماليات بدقة */
 function computeCartTotals(cart, productsById) {
     let subtotal = 0;
     const lines = (cart || []).map((line) => {
         const id = cartLineProductId(line);
         const p = id ? productsById.get(id) : undefined;
-        
+
         if (!p || !p.isActive) {
             return { product: line.product, quantity: line.quantity, size: line.size, unitPrice: 0, lineTotal: 0, unavailable: true };
         }
-        
+
         const unit = getEffectiveUnitPrice(p, line.size);
         const lineTotal = unit * line.quantity;
         subtotal += lineTotal;
-        
+
         return { product: line.product, quantity: line.quantity, size: line.size, unitPrice: unit, lineTotal, unavailable: false };
     });
-    
+
     // تقريب السعر لمنع أخطاء الجافاسكريبت العشرية (مثل 0.300000004)
     subtotal = Math.round(subtotal * 100) / 100;
     return { lines, subtotal };
@@ -84,11 +94,11 @@ exports.getCart = asyncHandler(async (req, res) => {
  */
 exports.addCartItem = asyncHandler(async (req, res) => {
     const { product } = req.body;
-    const size = req.body.size ? String(req.body.size).trim() : undefined;
+    const size = normalizeSize(req.body.size);
     const quantity = Number(req.body.quantity) || 1;
-    
+
     if (quantity <= 0) throw new AppError('الكمية يجب أن تكون 1 على الأقل', 400);
-    
+
     const p = await Product.findById(product);
     if (!p || !p.isActive) {
         throw new AppError('المنتج غير متوفر', 400);
@@ -98,8 +108,8 @@ exports.addCartItem = asyncHandler(async (req, res) => {
     if (!user) throw new AppError('المستخدم غير موجود', 404);
 
     // البحث عن المنتج بنفس الـ ID والمقاس
-    const idx = user.cart.findIndex((c) => 
-        c.product.toString() === product && String(c.size) === String(size)
+    const idx = user.cart.findIndex((c) =>
+        c.product.toString() === product && normalizeSize(c.size) === size
     );
 
     if (idx >= 0) {
@@ -107,7 +117,7 @@ exports.addCartItem = asyncHandler(async (req, res) => {
     } else {
         user.cart.push({ product, quantity, size });
     }
-    
+
     await user.save();
 
     const cartData = await getCartResponse(user._id);
@@ -120,24 +130,24 @@ exports.addCartItem = asyncHandler(async (req, res) => {
  */
 exports.removeCartItem = asyncHandler(async (req, res) => {
     assertObjectId(req.params.productId);
-    // جلب المقاس كنص (لتفادي مشكلة Number("Large") = NaN)
-    const sizeToMatch = req.query.size !== undefined ? String(req.query.size).trim() : undefined;
-    
+    // جلب المقاس وتطبيعه بنفس منطق الإضافة (undefined/null/'' => بدون مقاس)
+    const sizeToMatch = normalizeSize(req.query.size);
+
     const user = await User.findById(req.user.id);
     if (!user) throw new AppError('المستخدم غير موجود', 404);
-    
+
     const beforeLength = user.cart.length;
-    
+
     user.cart = user.cart.filter((c) => {
         const productMatch = c.product.toString() === req.params.productId;
-        const sizeMatch = sizeToMatch !== undefined ? String(c.size) === sizeToMatch : true;
-        return !(productMatch && sizeMatch); // احذف إذا تطابق المنتج والمقاس
+        const sizeMatch = normalizeSize(c.size) === sizeToMatch;
+        return !(productMatch && sizeMatch); // احذف إذا تطابق المنتج والمقاس فقط
     });
-    
+
     if (user.cart.length === beforeLength) {
         throw new AppError('العنصر غير موجود في السلة', 404);
     }
-    
+
     await user.save();
 
     const cartData = await getCartResponse(user._id);
@@ -150,25 +160,25 @@ exports.removeCartItem = asyncHandler(async (req, res) => {
  */
 exports.decrementCartItem = asyncHandler(async (req, res) => {
     assertObjectId(req.params.productId);
-    const sizeToMatch = req.query.size !== undefined ? String(req.query.size).trim() : undefined;
-    
+    const sizeToMatch = normalizeSize(req.query.size);
+
     const user = await User.findById(req.user.id);
     if (!user) throw new AppError('المستخدم غير موجود', 404);
-    
+
     const idx = user.cart.findIndex((c) => {
         const productMatch = c.product.toString() === req.params.productId;
-        const sizeMatch = sizeToMatch !== undefined ? String(c.size) === sizeToMatch : true;
+        const sizeMatch = normalizeSize(c.size) === sizeToMatch;
         return productMatch && sizeMatch;
     });
 
     if (idx < 0) throw new AppError('العنصر غير موجود في السلة', 404);
-    
+
     if (user.cart[idx].quantity <= 1) {
         user.cart.splice(idx, 1); // إذا كانت الكمية 1، احذف المنتج
     } else {
         user.cart[idx].quantity -= 1;
     }
-    
+
     await user.save();
 
     const cartData = await getCartResponse(user._id);
@@ -181,20 +191,19 @@ exports.decrementCartItem = asyncHandler(async (req, res) => {
  */
 exports.incrementCartItem = asyncHandler(async (req, res) => {
     assertObjectId(req.params.productId);
-    const sizeToMatch = req.query.size !== undefined ? String(req.query.size).trim() : undefined;
-    
+    const sizeToMatch = normalizeSize(req.query.size);
+
     const user = await User.findById(req.user.id);
     if (!user) throw new AppError('المستخدم غير موجود', 404);
-    
+
     const idx = user.cart.findIndex((c) => {
         const productMatch = c.product.toString() === req.params.productId;
-        const sizeMatch = sizeToMatch !== undefined ? String(c.size) === sizeToMatch : true;
+        const sizeMatch = normalizeSize(c.size) === sizeToMatch;
         return productMatch && sizeMatch;
     });
 
     if (idx < 0) throw new AppError('العنصر غير موجود في السلة', 404);
-    
-    // تم إصلاح خطأ الـ syntax هنا
+
     user.cart[idx].quantity += 1;
 
     await user.save();
