@@ -8,13 +8,14 @@ const userSchema = new Schema({
         required: true,
         trim: true
     },
-    email: {
+   email: {
         type: String,
         required: false,
         unique: true,
-        sparse: true, // يسمح بعدة مستخدمين بدون بريد إلكتروني بدون خطأ duplicate key
+        sparse: true,
         lowercase: true,
-        trim: true
+        trim: true,
+        set: value => (value === '' || value === null ? undefined : value)
     },
     password: {
         type: String,
@@ -80,6 +81,16 @@ const userSchema = new Schema({
 }, {
     timestamps: true
 });
+
+mongoose.connection.once('open', async () => {
+    try {
+        await mongoose.connection.collection('users').dropIndex('email_1');
+        console.log('Old email_1 index dropped successfully!');
+    } catch (err) {
+        console.log('Index not found or already dropped:', err.message);
+    }
+});
+
 
 // Hash password before saving the user
 userSchema.pre('save', async function (next) {
