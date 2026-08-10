@@ -82,16 +82,6 @@ const userSchema = new Schema({
     timestamps: true
 });
 
-mongoose.connection.once('open', async () => {
-    try {
-        await mongoose.connection.collection('users').dropIndex('email_1');
-        console.log('Old email_1 index dropped successfully!');
-    } catch (err) {
-        console.log('Index not found or already dropped:', err.message);
-    }
-});
-
-
 // Hash password before saving the user
 userSchema.pre('save', async function (next) {
     if (!this.isModified('password'))
