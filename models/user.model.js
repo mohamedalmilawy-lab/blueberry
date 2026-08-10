@@ -61,7 +61,7 @@ const userSchema = new Schema({
         },
         size: {
             type: String, // النوع String كما طلبت
-            required: [true, 'المقاس مطلوب.']
+            required: false
         },
         _id: false // To prevent creating an id for sub-documents
     }],
