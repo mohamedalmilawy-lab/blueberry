@@ -31,6 +31,27 @@ if (process.env.NODE_ENV === 'development') {
 const apiRoutes = require('./routes');
 app.use('/api', apiRoutes);
 
+
+
+
+
+// تحويل الحقول القديمة التي نوعها ObjectId إلى مصفوفة وتحوي نفس القيمة
+await Category.updateMany(
+    { banner: { $type: 'objectId' } },
+    [{ $set: { banner: ['$banner'] } }]
+);
+
+await Product.updateMany(
+    { banner: { $type: 'objectId' } },
+    [{ $set: { banner: ['$banner'] } }]
+);
+
+
+
+
+
+console.log('تم تحديث نوع حقل banner بنجاح إلى مصفوفات!');
+
 // 4. دالة معالجة الأخطاء (يجب أن تكون في النهاية تماماً)
 app.use(errorHandler);
 
