@@ -170,7 +170,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
 
     // 2. تحقق من الحد الأدنى لطول كلمة المرور (طبقة حماية إضافية بجانب الـ schema)
     if (password.length < 6) {
-        throw new AppError('كلمة المرور يجب أن تكون 8 أحرف على الأقل', 400);
+        throw new AppError('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 400);
     }
 
     // 3. التحقق من تطابق كلمتي المرور
