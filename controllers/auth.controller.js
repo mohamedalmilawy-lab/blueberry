@@ -111,6 +111,12 @@ exports.login = asyncHandler(async (req, res) => {
  */
 exports.forgotPassword = asyncHandler(async (req, res) => {
     const { email } = req.body;
+    // 1. التحقق من وجود الإيميل لتجنب حدوث خطأ TypeError
+    if (!email) {
+        throw new AppError('الرجاء إدخال البريد الإلكتروني', 400);
+        // أو يمكنك إرجاع استجابة عبر: return ApiResponse.error(res, '...', 400);
+    }
+    
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
@@ -124,7 +130,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     // 2. تجهيز الرابط الذي سيتم إرساله للمستخدم
-    const resetURL = `http://localhost:3000/api/auth/reset-password/${resetToken}`;
+    const resetURL = `https://blueberry-znep.onrender.com/api/auth/reset-password/${resetToken}`;
 
     const message = `لقد طلبت إعادة تعيين كلمة المرور الخاصة بك.\n\nالرجاء الضغط على الرابط التالي لإعداد كلمة مرور جديدة:\n${resetURL}\n\nإذا لم تقم بهذا الطلب، يرجى تجاهل هذا الإيميل.`;
 
