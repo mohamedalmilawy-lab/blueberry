@@ -150,32 +150,52 @@ exports.getProduct = asyncHandler(async (req, res) => {
 
 // @desc    جلب أحدث المنتجات
 exports.latest = asyncHandler(async (req, res) => {
-    const latestProducts = await Product.find({ isActive: true })
-        .select('-customerNotes')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate(publicProductPopulate);
+    const { page, limit, skip } = getPaginationFromQuery(req.query);
+    const filter = { isActive: true };
 
-    const enrichedItems = latestProducts.map((p) => injectCartFavoritesStatus(p, req.user));
+    const [items, total] = await Promise.all([
+        Product.find(filter)
+            .select('-customerNotes')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate(publicProductPopulate),
+        Product.countDocuments(filter)
+    ]);
 
-    return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', enrichedItems);
+    const enrichedItems = items.map((p) => injectCartFavoritesStatus(p, req.user));
+
+    return ApiResponse.ok(res, 'تم جلب أحدث المنتجات بنجاح', {
+        items: enrichedItems,
+        meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
+    });
 });
 
 // @desc    جلب المنتجات الأكثر طلبًا
 // @route   GET /api/products/most-requested
 exports.getMostRequested = asyncHandler(async (req, res) => {
-    const mostRequestedProducts = await Product.find({
+    const { page, limit, skip } = getPaginationFromQuery(req.query);
+    const filter = {
         isMostRequested: true,
         isActive: true
-    })
-        .select('-customerNotes')
-        .sort({ createdAt: -1 })
-        .limit(15)
-        .populate(publicProductPopulate);
+    };
 
-    const enrichedItems = mostRequestedProducts.map((p) => injectCartFavoritesStatus(p, req.user));
+    const [items, total] = await Promise.all([
+        Product.find(filter)
+            .select('-customerNotes')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate(publicProductPopulate),
+        Product.countDocuments(filter)
+    ]);
 
-    return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', enrichedItems);
+    const enrichedItems = items.map((p) => injectCartFavoritesStatus(p, req.user));
+
+    return ApiResponse.ok(res, 'تم جلب المنتجات الأكثر طلباً بنجاح', {
+        items: enrichedItems,
+        meta: { page, limit, total, pages: Math.ceil(total / limit) || 1 }
+    });
 });
 
 // @desc    جلب جميع المنتجات التي عليها عروض سارية
