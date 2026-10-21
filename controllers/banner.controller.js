@@ -5,6 +5,18 @@ const ApiResponse = require('../utils/ApiResponse');
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
 const { deleteFromCloudinary } = require('../config/cloudinary');
+const { injectCartFavoritesStatus } = require('../utils/CartFavorites');
+
+// فصلنا الـ Populate للمستخدم العام والأدمن
+const publicProductPopulate = [
+    { path: 'category', select: 'name image isActive parent' },
+    { path: 'banner', match: { isActive: true }, select: 'imageUrl title linkType link isActive' }
+];
+
+const adminProductPopulate = [
+    { path: 'category', select: 'name image isActive parent' },
+    { path: 'banner', select: 'imageUrl title linkType link isActive' }
+];
 
 /**
  * تطبيع حقل link القادم من FormData:
@@ -44,7 +56,9 @@ exports.getBanner = asyncHandler(async (req, res) => {
 
     // التحقق من النوع وجلب البيانات المرتبطة
     if (linkType === 'Product' && link && link.length > 0) {
-        relatedData = await Product.find({ _id: { $in: link } });
+        const products = await Product.find({ _id: { $in: link } })
+            .populate(publicProductPopulate);
+        relatedData = products.map(p => injectCartFavoritesStatus(p, req.user));
     } else if (linkType === 'Category' && link && link.length > 0) {
         relatedData = await Category.find({ _id: { $in: link } });
     }
@@ -79,7 +93,9 @@ exports.adminGetBanner = asyncHandler(async (req, res) => {
 
     // التحقق من النوع وجلب البيانات المرتبطة
     if (linkType === 'Product' && link && link.length > 0) {
-        relatedData = await Product.find({ _id: { $in: link } });
+        const products = await Product.find({ _id: { $in: link } })
+            .populate(adminProductPopulate);
+        relatedData = products.map(p => injectCartFavoritesStatus(p, req.user));
     } else if (linkType === 'Category' && link && link.length > 0) {
         relatedData = await Category.find({ _id: { $in: link } });
     }
