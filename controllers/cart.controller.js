@@ -186,26 +186,58 @@ exports.decrementCartItem = asyncHandler(async (req, res) => {
 });
 
 /**
- * @route   PATCH /api/cart/items/:productId/increment
+ * @route   PATCH /api/cart/items/:productId/increment?size=M
  * @access  Private
+ * - إذا أُرسل size: تُزاد كمية هذا الحجم تحديداً
+ * - إذا لم يُرسل وكان للمنتج حجم واحد فقط في السلة: تُزاد كميته مباشرة
+ * - إذا لم يُرسل وكان للمنتج عدة أحجام: يرجع 409 مع الأحجام ليسأل التطبيق المستخدم
  */
 exports.incrementCartItem = asyncHandler(async (req, res) => {
-    assertObjectId(req.params.productId);
-    const sizeToMatch = normalizeSize(req.query.size);
+    const { productId } = req.params;
+    assertObjectId(productId);
+
+    const hasSize =
+        req.query.size !== undefined && String(req.query.size).trim() !== '';
+    const sizeToMatch = hasSize ? normalizeSize(req.query.size) : null;
 
     const user = await User.findById(req.user.id);
     if (!user) throw new AppError('المستخدم غير موجود', 404);
 
-    const idx = user.cart.findIndex((c) => {
-        const productMatch = c.product.toString() === req.params.productId;
-        const sizeMatch = normalizeSize(c.size) === sizeToMatch;
-        return productMatch && sizeMatch;
-    });
+    // كل سطور السلة الخاصة بهذا المنتج (بأحجام مختلفة)
+    const productLines = user.cart.filter(
+        (c) => c.product.toString() === productId
+    );
 
-    if (idx < 0) throw new AppError('العنصر غير موجود في السلة', 404);
+    if (productLines.length === 0) {
+        throw new AppError('العنصر غير موجود في السلة', 404);
+    }
 
-    user.cart[idx].quantity += 1;
+    let item;
 
+    if (hasSize) {
+        item = productLines.find((c) => normalizeSize(c.size) === sizeToMatch);
+        if (!item) {
+            throw new AppError('هذا الحجم غير موجود في السلة', 404);
+        }
+    } else if (productLines.length === 1) {
+        item = productLines[0];
+    } else {
+        // أكثر من حجم: يجب أن يختار المستخدم
+        return res.status(409).json({
+            success: false,
+            code: 'SIZE_REQUIRED',
+            message: 'يرجى تحديد الحجم المراد زيادة كميته',
+            data: {
+                productId,
+                sizes: productLines.map((c) => ({
+                    size: c.size,
+                    quantity: c.quantity,
+                })),
+            },
+        });
+    }
+
+    item.quantity += 1;
     await user.save();
 
     const cartData = await getCartResponse(user._id);
