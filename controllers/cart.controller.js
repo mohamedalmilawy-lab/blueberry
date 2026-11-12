@@ -188,15 +188,17 @@ exports.decrementCartItem = asyncHandler(async (req, res) => {
 /**
  * @route   PATCH /api/cart/items/:productId/increment?size=M
  * @access  Private
- * - إذا أُرسل size: تُزاد كمية هذا الحجم تحديداً
- * - إذا لم يُرسل وكان للمنتج حجم واحد فقط في السلة: تُزاد كميته مباشرة
- * - إذا لم يُرسل وكان للمنتج عدة أحجام: يرجع 409 مع الأحجام ليسأل التطبيق المستخدم
+ * - size مُرسل وموجود بالسلة: تُزاد كمية هذا الحجم
+ * - size مُرسل وغير موجود بالسلة لكنه من أحجام المنتج: يُضاف كسطر جديد بكمية 1
+ * - size غير مُرسل وللمنتج حجم واحد بالسلة: تُزاد كميته مباشرة
+ * - size غير مُرسل وللمنتج عدة أحجام بالسلة: 409 (SIZE_REQUIRED) ليختار المستخدم
  */
 exports.incrementCartItem = asyncHandler(async (req, res) => {
     const { productId } = req.params;
     assertObjectId(productId);
 
-    const hasSize =req.query.size !== undefined && String(req.query.size).trim() !== '';
+    const hasSize =
+        req.query.size !== undefined && String(req.query.size).trim() !== '';
     const sizeToMatch = hasSize ? normalizeSize(req.query.size) : null;
 
     const user = await User.findById(req.user.id);
@@ -205,17 +207,21 @@ exports.incrementCartItem = asyncHandler(async (req, res) => {
     const productLines = user.cart.filter(
         (c) => c.product.toString() === productId
     );
-
     if (productLines.length === 0) {
         throw new AppError('العنصر غير موجود في السلة', 404);
     }
 
-    // جلب المنتج لمعرفة الأحجام المتاحة
-    const product = await Product.findById(productId).select('sizes');
-    if (!product) throw new AppError('المنتج غير موجود', 404);
+    const product = await Product.findById(productId).select('sizes isActive');
+    if (!product || !product.isActive) {
+        throw new AppError('المنتج غير متوفر', 404);
+    }
 
-    const availableSizes = product.sizes || []; // عدّلها حسب موديلك
+    const availableSizes = (product.sizes || []).map((s) => ({
+        size: s.size,
+        price: s.price,
+    }));
 
+    // لم يُرسل الحجم
     if (!hasSize) {
         if (productLines.length === 1) {
             productLines[0].quantity += 1;
@@ -224,32 +230,27 @@ exports.incrementCartItem = asyncHandler(async (req, res) => {
             return ApiResponse.ok(res, 'تم زيادة الكمية بنجاح', cartData);
         }
 
-        // أكثر من حجم: يختار المستخدم (من الموجود بالسلة أو حجم جديد)
-        return res.status(409).json({
-            success: false,
+        return ApiResponse.send(res, 409, 'يرجى تحديد الحجم', {
             code: 'SIZE_REQUIRED',
-            message: 'يرجى تحديد الحجم',
-            data: {
-                productId,
-                sizes: productLines.map((c) => ({
-                    size: c.size,
-                    quantity: c.quantity,
-                })),
-                availableSizes,
-            },
+            productId,
+            sizes: productLines.map((c) => ({
+                size: c.size,
+                quantity: c.quantity,
+            })),
+            availableSizes,
         });
     }
 
     // تم إرسال الحجم
-    const item = productLines.find((c) => normalizeSize(c.size) === sizeToMatch);
+    const item = productLines.find(
+        (c) => normalizeSize(c.size) === sizeToMatch
+    );
 
     if (item) {
-        // الحجم موجود بالسلة: زيادة الكمية
         item.quantity += 1;
     } else {
-        // الحجم غير موجود بالسلة: نتحقق أنه من أحجام المنتج ثم نضيفه
         const validSize = availableSizes.find(
-            (s) => normalizeSize(s) === sizeToMatch
+            (s) => normalizeSize(s.size) === sizeToMatch
         );
         if (!validSize) {
             throw new AppError('هذا الحجم غير متوفر لهذا المنتج', 400);
@@ -257,7 +258,7 @@ exports.incrementCartItem = asyncHandler(async (req, res) => {
 
         user.cart.push({
             product: productId,
-            size: validSize,
+            size: validSize.size,
             quantity: 1,
         });
     }
