@@ -196,14 +196,12 @@ exports.incrementCartItem = asyncHandler(async (req, res) => {
     const { productId } = req.params;
     assertObjectId(productId);
 
-    const hasSize =
-        req.query.size !== undefined && String(req.query.size).trim() !== '';
+    const hasSize =req.query.size !== undefined && String(req.query.size).trim() !== '';
     const sizeToMatch = hasSize ? normalizeSize(req.query.size) : null;
 
     const user = await User.findById(req.user.id);
     if (!user) throw new AppError('المستخدم غير موجود', 404);
 
-    // كل سطور السلة الخاصة بهذا المنتج (بأحجام مختلفة)
     const productLines = user.cart.filter(
         (c) => c.product.toString() === productId
     );
@@ -212,34 +210,60 @@ exports.incrementCartItem = asyncHandler(async (req, res) => {
         throw new AppError('العنصر غير موجود في السلة', 404);
     }
 
-    let item;
+    // جلب المنتج لمعرفة الأحجام المتاحة
+    const product = await Product.findById(productId).select('sizes');
+    if (!product) throw new AppError('المنتج غير موجود', 404);
 
-    if (hasSize) {
-        item = productLines.find((c) => normalizeSize(c.size) === sizeToMatch);
-        if (!item) {
-            throw new AppError('هذا الحجم غير موجود في السلة', 404);
+    const availableSizes = product.sizes || []; // عدّلها حسب موديلك
+
+    if (!hasSize) {
+        if (productLines.length === 1) {
+            productLines[0].quantity += 1;
+            await user.save();
+            const cartData = await getCartResponse(user._id);
+            return ApiResponse.ok(res, 'تم زيادة الكمية بنجاح', cartData);
         }
-    } else if (productLines.length === 1) {
-        item = productLines[0];
-    } else {
-        // أكثر من حجم: يجب أن يختار المستخدم
+
+        // أكثر من حجم: يختار المستخدم (من الموجود بالسلة أو حجم جديد)
         return res.status(409).json({
             success: false,
             code: 'SIZE_REQUIRED',
-            message: 'يرجى تحديد الحجم المراد زيادة كميته',
+            message: 'يرجى تحديد الحجم',
             data: {
                 productId,
                 sizes: productLines.map((c) => ({
                     size: c.size,
                     quantity: c.quantity,
                 })),
+                availableSizes,
             },
         });
     }
 
-    item.quantity += 1;
+    // تم إرسال الحجم
+    const item = productLines.find((c) => normalizeSize(c.size) === sizeToMatch);
+
+    if (item) {
+        // الحجم موجود بالسلة: زيادة الكمية
+        item.quantity += 1;
+    } else {
+        // الحجم غير موجود بالسلة: نتحقق أنه من أحجام المنتج ثم نضيفه
+        const validSize = availableSizes.find(
+            (s) => normalizeSize(s) === sizeToMatch
+        );
+        if (!validSize) {
+            throw new AppError('هذا الحجم غير متوفر لهذا المنتج', 400);
+        }
+
+        user.cart.push({
+            product: productId,
+            size: validSize,
+            quantity: 1,
+        });
+    }
+
     await user.save();
 
     const cartData = await getCartResponse(user._id);
-    return ApiResponse.ok(res, 'تم زيادة الكمية بنجاح', cartData);
+    return ApiResponse.ok(res, 'تم تحديث السلة بنجاح', cartData);
 });
